@@ -104,7 +104,8 @@ class KhotlaChain:
         amount,
         transaction_id=None,
         signature=None,
-        public_key=None
+        public_key=None,
+        timestamp=None
     ):
 
         if not sender:
@@ -118,7 +119,9 @@ class KhotlaChain:
             )
 
         try:
+
             amount = float(amount)
+
         except (TypeError, ValueError):
 
             raise ValueError(
@@ -126,6 +129,7 @@ class KhotlaChain:
             )
 
         if amount <= 0:
+
             raise ValueError(
                 "Amount must be greater than zero."
             )
@@ -141,12 +145,16 @@ class KhotlaChain:
                 ).encode("utf-8")
             ).hexdigest()
 
+        if timestamp is None:
+
+            timestamp = time.time()
+
         transaction = {
             "transaction_id": transaction_id,
             "sender": sender,
             "receiver": receiver,
             "amount": amount,
-            "timestamp": time.time(),
+            "timestamp": timestamp,
             "signature": signature,
             "public_key": public_key
         }
@@ -213,12 +221,18 @@ class KhotlaChain:
             "public_key"
         )
 
+        timestamp = transaction.get(
+            "timestamp"
+        )
+
         try:
+
             amount = float(
                 transaction.get(
                     "amount"
                 )
             )
+
         except (TypeError, ValueError):
 
             return False
@@ -235,6 +249,10 @@ class KhotlaChain:
         if amount <= 0:
             return False
 
+        if timestamp is None:
+            return False
+
+        # Genesis transactions are trusted.
         if sender == "KHT_GENESIS":
             return True
 
@@ -301,6 +319,7 @@ class KhotlaChain:
     def mine(self):
 
         if not self.pending_transactions:
+
             return None
 
         for transaction in (
@@ -310,6 +329,7 @@ class KhotlaChain:
             if not self.validate_transaction(
                 transaction
             ):
+
                 raise ValueError(
                     "Invalid transaction."
                 )
@@ -337,6 +357,7 @@ class KhotlaChain:
     def is_valid(self):
 
         if not self.chain:
+
             return False
 
         for i in range(
@@ -351,17 +372,20 @@ class KhotlaChain:
                 current.hash
                 != current.calculate_hash()
             ):
+
                 return False
 
             if (
                 current.previous_hash
                 != previous.hash
             ):
+
                 return False
 
             if not current.hash.startswith(
                 "0" * self.difficulty
             ):
+
                 return False
 
             for transaction in (
@@ -371,6 +395,7 @@ class KhotlaChain:
                 if not self.validate_transaction(
                     transaction
                 ):
+
                     return False
 
         return True
@@ -416,6 +441,7 @@ class KhotlaChain:
         if not os.path.exists(
             self.storage_file
         ):
+
             return None
 
         try:
@@ -445,6 +471,7 @@ class KhotlaChain:
                 )
 
                 if stored_hash:
+
                     block.hash = stored_hash
 
                 loaded_chain.append(
@@ -452,6 +479,7 @@ class KhotlaChain:
                 )
 
             if not loaded_chain:
+
                 return None
 
             return loaded_chain
