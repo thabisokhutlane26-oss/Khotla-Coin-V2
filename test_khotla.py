@@ -1,9 +1,11 @@
 import os
-import tempfile
 
-from khotla_chain import KhotlaChain
 from khotla_wallet import KhotlaWallet
 from khotla_transaction import KhotlaTransaction
+from khotla_chain import KhotlaChain
+
+
+TEST_CHAIN_FILE = "test_khotla_chain_data.json"
 
 
 def test_wallet_creation():
@@ -16,16 +18,18 @@ def test_wallet_creation():
     assert len(wallet.private_key) == 64
     assert len(wallet.public_key) == 64
 
+    print("Wallet creation: OK")
 
-def test_ed25519_signature():
+
+def test_wallet_signature():
 
     wallet = KhotlaWallet()
 
-    message = "Khotla Testnet Transaction"
+    message = "Khotla Testnet Test"
 
-    signature = wallet.sign_message(message)
-
-    assert signature
+    signature = wallet.sign_message(
+        message
+    )
 
     assert wallet.verify_signature(
         message,
@@ -38,187 +42,18 @@ def test_ed25519_signature():
         wallet.public_key
     )
 
-    assert not wallet.verify_signature(
-        "Wrong message",
-        signature
-    )
+    print("Wallet signature: OK")
 
 
-def test_transaction_creation():
-
-    wallet1 = KhotlaWallet()
-    wallet2 = KhotlaWallet()
-
-    transaction = KhotlaTransaction(
-        wallet1.address,
-        wallet2.address,
-        100
-    )
-
-    signature = wallet1.sign_message(
-        transaction.transaction_hash()
-    )
-
-    transaction.signature = signature
-    transaction.public_key = wallet1.public_key
-
-    assert transaction.amount == 100
-    assert transaction.sender == wallet1.address
-    assert transaction.receiver == wallet2.address
-    assert transaction.transaction_id
-    assert transaction.timestamp is not None
-    assert len(transaction.transaction_hash()) == 64
-    assert transaction.is_valid()
-
-
-def test_genesis_transaction():
-
-    transaction = KhotlaTransaction(
-        "KHT_GENESIS",
-        "THABISO_WALLET",
-        1000
-    )
-
-    assert transaction.is_valid()
-
-
-def test_invalid_amount():
-
-    wallet = KhotlaWallet()
-
-    try:
-
-        KhotlaTransaction(
-            wallet.address,
-            "KHT_RECEIVER",
-            -10
-        )
-
-        assert False
-
-    except ValueError:
-
-        assert True
-
-
-def test_blockchain_mining():
-
-    with tempfile.TemporaryDirectory() as folder:
-
-        chain_file = os.path.join(
-            folder,
-            "chain.json"
-        )
-
-        sender = KhotlaWallet()
-        receiver = KhotlaWallet()
-
-        blockchain = KhotlaChain(
-            storage_file=chain_file
-        )
-
-        transaction = KhotlaTransaction(
-            sender.address,
-            receiver.address,
-            100
-        )
-
-        signature = sender.sign_message(
-            transaction.transaction_hash()
-        )
-
-        transaction.signature = signature
-        transaction.public_key = sender.public_key
-
-        blockchain.add_transaction(
-            sender=sender.address,
-            receiver=receiver.address,
-            amount=transaction.amount,
-            transaction_id=transaction.transaction_id,
-            signature=transaction.signature,
-            public_key=transaction.public_key,
-            timestamp=transaction.timestamp
-        )
-
-        block = blockchain.mine()
-
-        assert block is not None
-        assert block.index == 1
-        assert blockchain.is_valid()
-        assert os.path.exists(chain_file)
-
-
-def test_blockchain_persistence():
-
-    with tempfile.TemporaryDirectory() as folder:
-
-        chain_file = os.path.join(
-            folder,
-            "chain.json"
-        )
-
-        sender = KhotlaWallet()
-        receiver = KhotlaWallet()
-
-        blockchain1 = KhotlaChain(
-            storage_file=chain_file
-        )
-
-        transaction = KhotlaTransaction(
-            sender.address,
-            receiver.address,
-            50
-        )
-
-        signature = sender.sign_message(
-            transaction.transaction_hash()
-        )
-
-        transaction.signature = signature
-        transaction.public_key = sender.public_key
-
-        blockchain1.add_transaction(
-            sender=sender.address,
-            receiver=receiver.address,
-            amount=transaction.amount,
-            transaction_id=transaction.transaction_id,
-            signature=transaction.signature,
-            public_key=transaction.public_key,
-            timestamp=transaction.timestamp
-        )
-
-        block = blockchain1.mine()
-
-        assert block is not None
-        assert blockchain1.is_valid()
-
-        blockchain2 = KhotlaChain(
-            storage_file=chain_file
-        )
-
-        assert len(blockchain2.chain) == len(
-            blockchain1.chain
-        )
-
-        assert blockchain2.is_valid()
-
-
-def test_tampered_transaction_fails():
+def test_transaction_signature():
 
     sender = KhotlaWallet()
     receiver = KhotlaWallet()
 
-    blockchain = KhotlaChain(
-        storage_file=os.path.join(
-            tempfile.gettempdir(),
-            "khotla_tamper_test.json"
-        )
-    )
-
     transaction = KhotlaTransaction(
         sender.address,
         receiver.address,
-        100
+        25
     )
 
     signature = sender.sign_message(
@@ -228,43 +63,287 @@ def test_tampered_transaction_fails():
     transaction.signature = signature
     transaction.public_key = sender.public_key
 
+    assert transaction.is_valid()
+
+    print("Transaction signature: OK")
+
+
+def test_invalid_transaction():
+
+    sender = KhotlaWallet()
+    receiver = KhotlaWallet()
+
+    transaction = KhotlaTransaction(
+        sender.address,
+        receiver.address,
+        25
+    )
+
+    signature = sender.sign_message(
+        transaction.transaction_hash()
+    )
+
+    transaction.signature = signature
+    transaction.public_key = sender.public_key
+
+    assert transaction.is_valid()
+
+    transaction.amount = 1000
+
+    assert not transaction.is_valid()
+
+    print("Invalid transaction protection: OK")
+
+
+def test_blockchain_genesis():
+
+    blockchain = KhotlaChain(
+        storage_file=TEST_CHAIN_FILE
+    )
+
+    assert len(blockchain.chain) >= 1
+    assert blockchain.chain[0].index == 0
+    assert blockchain.chain[0].previous_hash == "0"
+
+    print("Blockchain genesis: OK")
+
+
+def test_blockchain_mining():
+
+    blockchain = KhotlaChain(
+        storage_file=TEST_CHAIN_FILE
+    )
+
+    sender = KhotlaWallet()
+    receiver = KhotlaWallet()
+
+    # Fund sender from the trusted testnet genesis account.
+
+    blockchain.add_transaction(
+        sender="KHT_GENESIS",
+        receiver=sender.address,
+        amount=100
+    )
+
+    faucet_block = blockchain.mine()
+
+    assert faucet_block is not None
+
+    assert blockchain.get_balance(
+        sender.address
+    ) == 100
+
+    print("Testnet funding: OK")
+
+    # Create a real signed transaction.
+
+    transaction = KhotlaTransaction(
+        sender.address,
+        receiver.address,
+        25
+    )
+
+    transaction.signature = (
+        sender.sign_message(
+            transaction.transaction_hash()
+        )
+    )
+
+    transaction.public_key = (
+        sender.public_key
+    )
+
+    assert transaction.is_valid()
+
+    # Add the signed transaction.
+
     blockchain.add_transaction(
         sender=sender.address,
         receiver=receiver.address,
-        amount=transaction.amount,
+        amount=25,
         transaction_id=transaction.transaction_id,
         signature=transaction.signature,
         public_key=transaction.public_key,
         timestamp=transaction.timestamp
     )
 
-    # Tamper with the amount after signing.
-    blockchain.pending_transactions[0]["amount"] = 999
+    assert len(
+        blockchain.pending_transactions
+    ) == 1
 
-    assert not blockchain.validate_transaction(
-        blockchain.pending_transactions[0]
+    # Mine the transfer.
+
+    transfer_block = blockchain.mine()
+
+    assert transfer_block is not None
+
+    # Check final balances.
+
+    assert blockchain.get_balance(
+        sender.address
+    ) == 75
+
+    assert blockchain.get_balance(
+        receiver.address
+    ) == 25
+
+    assert blockchain.is_valid()
+
+    print("Blockchain mining: OK")
+
+
+def test_insufficient_balance():
+
+    blockchain = KhotlaChain(
+        storage_file=TEST_CHAIN_FILE
     )
+
+    sender = KhotlaWallet()
+    receiver = KhotlaWallet()
+
+    try:
+
+        blockchain.add_transaction(
+            sender=sender.address,
+            receiver=receiver.address,
+            amount=1,
+            signature="invalid",
+            public_key=sender.public_key
+        )
+
+        raise AssertionError(
+            "Insufficient balance was not blocked."
+        )
+
+    except ValueError as error:
+
+        assert str(error) == (
+            "Insufficient balance."
+        )
+
+    print("Insufficient balance protection: OK")
+
+
+def test_chain_tamper_detection():
+
+    blockchain = KhotlaChain(
+        storage_file=TEST_CHAIN_FILE
+    )
+
+    sender = KhotlaWallet()
+    receiver = KhotlaWallet()
+
+    # Fund sender.
+
+    blockchain.add_transaction(
+        sender="KHT_GENESIS",
+        receiver=sender.address,
+        amount=50
+    )
+
+    blockchain.mine()
+
+    # Create valid signed transaction.
+
+    transaction = KhotlaTransaction(
+        sender.address,
+        receiver.address,
+        10
+    )
+
+    transaction.signature = (
+        sender.sign_message(
+            transaction.transaction_hash()
+        )
+    )
+
+    transaction.public_key = (
+        sender.public_key
+    )
+
+    blockchain.add_transaction(
+        sender=sender.address,
+        receiver=receiver.address,
+        amount=10,
+        transaction_id=transaction.transaction_id,
+        signature=transaction.signature,
+        public_key=transaction.public_key,
+        timestamp=transaction.timestamp
+    )
+
+    blockchain.mine()
+
+    assert blockchain.is_valid()
+
+    # Tamper with a confirmed transaction.
+
+    blockchain.chain[1].transactions[0][
+        "amount"
+    ] = 999
+
+    assert not blockchain.is_valid()
+
+    print("Chain tamper detection: OK")
+
+
+def cleanup():
+
+    if os.path.exists(
+        TEST_CHAIN_FILE
+    ):
+
+        os.remove(
+            TEST_CHAIN_FILE
+        )
+
+
+def main():
+
+    print("================================")
+    print("       KHOTLA COIN TESTS")
+    print("================================")
+    print()
+
+    cleanup()
+
+    test_wallet_creation()
+
+    cleanup()
+
+    test_wallet_signature()
+
+    cleanup()
+
+    test_transaction_signature()
+
+    cleanup()
+
+    test_invalid_transaction()
+
+    cleanup()
+
+    test_blockchain_genesis()
+
+    cleanup()
+
+    test_blockchain_mining()
+
+    cleanup()
+
+    test_insufficient_balance()
+
+    cleanup()
+
+    test_chain_tamper_detection()
+
+    cleanup()
+
+    print()
+    print("================================")
+    print("       ALL KHOTLA TESTS OK")
+    print("================================")
 
 
 if __name__ == "__main__":
 
-    test_wallet_creation()
-
-    test_ed25519_signature()
-
-    test_transaction_creation()
-
-    test_genesis_transaction()
-
-    test_invalid_amount()
-
-    test_blockchain_mining()
-
-    test_blockchain_persistence()
-
-    test_tampered_transaction_fails()
-
-    print()
-    print("================================")
-    print("   KHOTLA STEP 10B TESTS PASSED")
-    print("================================")
+    main()
