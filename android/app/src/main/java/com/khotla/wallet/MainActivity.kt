@@ -3,12 +3,15 @@ package com.khotla.wallet
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.os.Bundle
 import android.graphics.Color
+import android.os.Bundle
+import android.text.InputType
 import android.view.Gravity
+import android.view.View
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -200,97 +203,102 @@ class MainActivity : AppCompatActivity() {
 
     private fun showMainScreen() {
 
-        val layout = createLayout()
+        val scrollView = ScrollView(this)
+
+        val layout = LinearLayout(this)
+
+        layout.orientation =
+            LinearLayout.VERTICAL
+
+        layout.gravity =
+            Gravity.CENTER_HORIZONTAL
+
+        layout.setPadding(
+            28,
+            35,
+            28,
+            35
+        )
+
+        scrollView.addView(layout)
 
         val title = createText(
-            "KHOTLA WALLET",
-            30f,
+            "KHOTLA",
+            34f,
             Color.BLACK
         )
 
-        val coin = createText(
-            "Khotla Coin (KHT)",
-            20f,
+        title.setTypeface(
+            null,
+            android.graphics.Typeface.BOLD
+        )
+
+        val subtitle = createText(
+            "WALLET",
+            18f,
             Color.DKGRAY
         )
 
         val network = createText(
-            "🌐 Khotla Testnet",
-            16f,
-            Color.DKGRAY
+            "● KHOTLA TESTNET",
+            15f,
+            Color.rgb(0, 130, 70)
+        )
+
+        network.setTypeface(
+            null,
+            android.graphics.Typeface.BOLD
         )
 
         walletNumberText = createText(
             "",
-            18f,
+            19f,
             Color.BLACK
+        )
+
+        walletNumberText.setTypeface(
+            null,
+            android.graphics.Typeface.BOLD
+        )
+
+        val balanceLabel = createText(
+            "TOTAL BALANCE",
+            14f,
+            Color.DKGRAY
         )
 
         balanceText = createText(
             "",
-            25f,
+            34f,
             Color.BLACK
+        )
+
+        balanceText.setTypeface(
+            null,
+            android.graphics.Typeface.BOLD
         )
 
         addressText = createText(
             "",
-            14f,
+            13f,
             Color.DKGRAY
         )
 
         updateWalletDisplay()
 
-        val createWalletButton = Button(this)
+        val copyAddressButton =
+            Button(this)
 
-        createWalletButton.text =
-            "CREATE WALLET"
+        copyAddressButton.text =
+            "COPY WALLET ADDRESS"
 
-        createWalletButton.setOnClickListener {
+        copyAddressButton.setOnClickListener {
 
-            createWallet1()
+            copyAddress()
         }
 
-        val secondWalletButton = Button(this)
-
-        secondWalletButton.text =
-            "CREATE SECOND TEST WALLET"
-
-        secondWalletButton.setOnClickListener {
-
-            createWallet2()
-        }
-
-        val switchButton = Button(this)
-
-        switchButton.text =
-            "SWITCH WALLET"
-
-        switchButton.setOnClickListener {
-
-            switchWallet()
-        }
-
-        val faucetButton = Button(this)
-
-        faucetButton.text =
-            "GET TESTNET KHT"
-
-        faucetButton.setOnClickListener {
-
-            requestFaucet()
-        }
-
-        val receiveButton = Button(this)
-
-        receiveButton.text =
-            "RECEIVE KHT"
-
-        receiveButton.setOnClickListener {
-
-            showReceiveScreen()
-        }
-
-        val sendButton = Button(this)
+        val sendButton =
+            Button(this)
 
         sendButton.text =
             "SEND KHT"
@@ -300,17 +308,19 @@ class MainActivity : AppCompatActivity() {
             showSendScreen()
         }
 
-        val refreshButton = Button(this)
+        val receiveButton =
+            Button(this)
 
-        refreshButton.text =
-            "REFRESH BALANCE"
+        receiveButton.text =
+            "RECEIVE KHT"
 
-        refreshButton.setOnClickListener {
+        receiveButton.setOnClickListener {
 
-            refreshBalance()
+            showReceiveScreen()
         }
 
-        val historyButton = Button(this)
+        val historyButton =
+            Button(this)
 
         historyButton.text =
             "TRANSACTION HISTORY"
@@ -320,29 +330,220 @@ class MainActivity : AppCompatActivity() {
             showHistoryScreen()
         }
 
+        val faucetButton =
+            Button(this)
+
+        faucetButton.text =
+            "GET 100 TESTNET KHT"
+
+        faucetButton.setOnClickListener {
+
+            requestFaucet()
+        }
+
+        val refreshButton =
+            Button(this)
+
+        refreshButton.text =
+            "REFRESH BALANCE"
+
+        refreshButton.setOnClickListener {
+
+            refreshBalance()
+        }
+
+        val createWalletButton =
+            Button(this)
+
+        createWalletButton.text =
+            "CREATE WALLET 1"
+
+        createWalletButton.setOnClickListener {
+
+            createWallet1()
+        }
+
+        val secondWalletButton =
+            Button(this)
+
+        secondWalletButton.text =
+            "CREATE WALLET 2"
+
+        secondWalletButton.setOnClickListener {
+
+            createWallet2()
+        }
+
+        val switchButton =
+            Button(this)
+
+        switchButton.text =
+            "SWITCH WALLET"
+
+        switchButton.setOnClickListener {
+
+            switchWallet()
+        }
+
         statusText = createText(
             "",
             14f,
             Color.DKGRAY
         )
 
-        layout.addView(title)
-        layout.addView(coin)
-        layout.addView(network)
-        layout.addView(walletNumberText)
-        layout.addView(balanceText)
-        layout.addView(addressText)
-        layout.addView(createWalletButton)
-        layout.addView(secondWalletButton)
-        layout.addView(switchButton)
-        layout.addView(faucetButton)
-        layout.addView(receiveButton)
-        layout.addView(sendButton)
-        layout.addView(refreshButton)
-        layout.addView(historyButton)
-        layout.addView(statusText)
+        layout.addView(
+            title,
+            marginParams()
+        )
 
-        setContentView(layout)
+        layout.addView(
+            subtitle,
+            marginParams()
+        )
+
+        layout.addView(
+            network,
+            marginParams()
+        )
+
+        layout.addView(
+            walletNumberText,
+            marginParams()
+        )
+
+        layout.addView(
+            balanceLabel,
+            marginParams()
+        )
+
+        layout.addView(
+            balanceText,
+            marginParams()
+        )
+
+        layout.addView(
+            addressText,
+            marginParams()
+        )
+
+        layout.addView(
+            copyAddressButton,
+            buttonParams()
+        )
+
+        layout.addView(
+            sendButton,
+            buttonParams()
+        )
+
+        layout.addView(
+            receiveButton,
+            buttonParams()
+        )
+
+        layout.addView(
+            historyButton,
+            buttonParams()
+        )
+
+        layout.addView(
+            faucetButton,
+            buttonParams()
+        )
+
+        layout.addView(
+            refreshButton,
+            buttonParams()
+        )
+
+        layout.addView(
+            createWalletButton,
+            buttonParams()
+        )
+
+        layout.addView(
+            secondWalletButton,
+            buttonParams()
+        )
+
+        layout.addView(
+            switchButton,
+            buttonParams()
+        )
+
+        layout.addView(
+            statusText,
+            marginParams()
+        )
+
+        setContentView(scrollView)
+    }
+
+    private fun updateWalletDisplay() {
+
+        val address =
+            getSelectedAddress()
+
+        val balance =
+            getSelectedBalance()
+
+        walletNumberText.text =
+            "WALLET $selectedWallet"
+
+        if (address == null) {
+
+            balanceText.text =
+                "0 KHT"
+
+            addressText.text =
+                "Wallet not created yet"
+
+            return
+        }
+
+        balanceText.text =
+            "$balance KHT"
+
+        addressText.text =
+            "Wallet Address\n\n$address"
+    }
+
+    private fun copyAddress() {
+
+        val address =
+            getSelectedAddress()
+
+        if (address == null) {
+
+            Toast.makeText(
+                this,
+                "Create a wallet first.",
+                Toast.LENGTH_SHORT
+            ).show()
+
+            return
+        }
+
+        val clipboard =
+            getSystemService(
+                Context.CLIPBOARD_SERVICE
+            ) as ClipboardManager
+
+        val clip =
+            ClipData.newPlainText(
+                "KHT Wallet Address",
+                address
+            )
+
+        clipboard.setPrimaryClip(
+            clip
+        )
+
+        Toast.makeText(
+            this,
+            "KHT address copied!",
+            Toast.LENGTH_SHORT
+        ).show()
     }
 
     private fun createWallet1() {
@@ -442,35 +643,6 @@ class MainActivity : AppCompatActivity() {
             "Switched to Wallet $selectedWallet"
     }
 
-    private fun updateWalletDisplay() {
-
-        val address =
-            getSelectedAddress()
-
-        val balance =
-            getSelectedBalance()
-
-        walletNumberText.text =
-            "\nWallet $selectedWallet"
-
-        if (address == null) {
-
-            balanceText.text =
-                "\nBalance\n0 KHT"
-
-            addressText.text =
-                "\nWallet not created yet"
-
-            return
-        }
-
-        balanceText.text =
-            "\nBalance\n$balance KHT"
-
-        addressText.text =
-            "\nWallet Address\n\n$address"
-    }
-
     private fun requestFaucet() {
 
         val address =
@@ -523,11 +695,14 @@ class MainActivity : AppCompatActivity() {
                             address,
                             100.0,
                             "RECEIVED",
-                            "CONFIRMED"
+                            "CONFIRMED",
+                            extractBlockNumber(
+                                response
+                            )
                         )
 
                         statusText.text =
-                            "100 KHT received!\nRefreshing balance..."
+                            "100 KHT received!\nRefreshing..."
 
                         refreshBalance()
                     }
@@ -590,8 +765,7 @@ class MainActivity : AppCompatActivity() {
                         updateWalletDisplay()
 
                         statusText.text =
-                            "Balance updated.\nKhotla Testnet"
-
+                            "Balance updated."
                     } else {
 
                         statusText.text =
@@ -627,77 +801,65 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val layout = createLayout()
+        val layout =
+            createScreenLayout()
 
-        val title = createText(
-            "RECEIVE KHT",
-            28f,
-            Color.BLACK
-        )
-
-        val walletLabel = createText(
-            "Wallet $selectedWallet",
-            18f,
-            Color.DKGRAY
-        )
-
-        val information = createText(
-            "Give this address to someone\nwho wants to send you KHT.",
-            17f,
-            Color.DKGRAY
-        )
-
-        val addressTextView = createText(
-            address,
-            15f,
-            Color.BLACK
-        )
-
-        val copyButton = Button(this)
-
-        copyButton.text =
-            "COPY ADDRESS"
-
-        copyButton.setOnClickListener {
-
-            val clipboard =
-                getSystemService(
-                    Context.CLIPBOARD_SERVICE
-                ) as ClipboardManager
-
-            val clip =
-                ClipData.newPlainText(
-                    "KHT Wallet Address",
-                    address
-                )
-
-            clipboard.setPrimaryClip(
-                clip
+        val title =
+            createText(
+                "RECEIVE KHT",
+                28f,
+                Color.BLACK
             )
 
-            Toast.makeText(
-                this,
-                "Address copied!",
-                Toast.LENGTH_SHORT
-            ).show()
+        val wallet =
+            createText(
+                "Wallet $selectedWallet",
+                18f,
+                Color.DKGRAY
+            )
+
+        val info =
+            createText(
+                "Share this address to receive KHT.",
+                17f,
+                Color.DKGRAY
+            )
+
+        val addressView =
+            createText(
+                address,
+                15f,
+                Color.BLACK
+            )
+
+        val copy =
+            Button(this)
+
+        copy.text =
+            "COPY ADDRESS"
+
+        copy.setOnClickListener {
+
+            copyAddress()
         }
 
-        val backButton = Button(this)
+        val back =
+            Button(this)
 
-        backButton.text =
+        back.text =
             "BACK"
 
-        backButton.setOnClickListener {
+        back.setOnClickListener {
 
             showMainScreen()
         }
 
         layout.addView(title)
-        layout.addView(walletLabel)
-        layout.addView(information)
-        layout.addView(addressTextView)
-        layout.addView(copyButton)
-        layout.addView(backButton)
+        layout.addView(wallet)
+        layout.addView(info)
+        layout.addView(addressView)
+        layout.addView(copy)
+        layout.addView(back)
 
         setContentView(layout)
     }
@@ -718,25 +880,22 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val layout = createLayout()
+        val layout =
+            createScreenLayout()
 
-        val title = createText(
-            "SEND KHT",
-            28f,
-            Color.BLACK
-        )
+        val title =
+            createText(
+                "SEND KHT",
+                28f,
+                Color.BLACK
+            )
 
-        val walletLabel = createText(
-            "Sending from Wallet $selectedWallet",
-            17f,
-            Color.DKGRAY
-        )
-
-        val warning = createText(
-            "Khotla Testnet\n\nPrototype testnet transfer.",
-            16f,
-            Color.DKGRAY
-        )
+        val wallet =
+            createText(
+                "Sending from Wallet $selectedWallet",
+                17f,
+                Color.DKGRAY
+            )
 
         val receiverInput =
             EditText(this)
@@ -752,14 +911,16 @@ class MainActivity : AppCompatActivity() {
         amountInput.hint =
             "Amount in KHT"
 
-        amountInput.inputType = 2
+        amountInput.inputType =
+            InputType.TYPE_CLASS_NUMBER or
+                    InputType.TYPE_NUMBER_FLAG_DECIMAL
 
         amountInput.setSingleLine(true)
 
-        val sendButton =
+        val send =
             Button(this)
 
-        sendButton.text =
+        send.text =
             "SEND KHT"
 
         val result =
@@ -769,19 +930,18 @@ class MainActivity : AppCompatActivity() {
                 Color.DKGRAY
             )
 
-        sendButton.setOnClickListener {
+        send.setOnClickListener {
 
             val receiver =
-                receiverInput
-                    .text
+                receiverInput.text
                     .toString()
                     .trim()
 
-            val amountText =
-                amountInput
-                    .text
+            val amount =
+                amountInput.text
                     .toString()
                     .trim()
+                    .toDoubleOrNull()
 
             if (!receiver.startsWith("KHT")) {
 
@@ -790,9 +950,6 @@ class MainActivity : AppCompatActivity() {
 
                 return@setOnClickListener
             }
-
-            val amount =
-                amountText.toDoubleOrNull()
 
             if (
                 amount == null ||
@@ -811,9 +968,7 @@ class MainActivity : AppCompatActivity() {
             ) {
 
                 result.text =
-                    "Insufficient KHT balance.\n\n" +
-                    "Available: " +
-                    "${getSelectedBalance()} KHT"
+                    "Insufficient KHT balance."
 
                 return@setOnClickListener
             }
@@ -862,7 +1017,7 @@ class MainActivity : AppCompatActivity() {
                             "{}"
                         )
 
-                    val blockNumber =
+                    val block =
                         extractBlockNumber(
                             mineResponse
                         )
@@ -875,15 +1030,13 @@ class MainActivity : AppCompatActivity() {
                             amount,
                             "SENT",
                             "CONFIRMED",
-                            blockNumber
+                            block
                         )
 
                         result.text =
-                            "KHT transaction submitted!\n\n" +
-                            "From Wallet $selectedWallet\n" +
-                            "To: $receiver\n" +
-                            "Amount: $amount KHT\n\n" +
-                            "Testnet block mined.\n\n" +
+                            "Transaction confirmed!\n\n" +
+                            "Amount: $amount KHT\n" +
+                            "Block: $block\n\n" +
                             "Refreshing balance..."
 
                         refreshBalance()
@@ -901,25 +1054,24 @@ class MainActivity : AppCompatActivity() {
             }.start()
         }
 
-        val backButton =
+        val back =
             Button(this)
 
-        backButton.text =
+        back.text =
             "BACK"
 
-        backButton.setOnClickListener {
+        back.setOnClickListener {
 
             showMainScreen()
         }
 
         layout.addView(title)
-        layout.addView(walletLabel)
-        layout.addView(warning)
+        layout.addView(wallet)
         layout.addView(receiverInput)
         layout.addView(amountInput)
-        layout.addView(sendButton)
+        layout.addView(send)
         layout.addView(result)
-        layout.addView(backButton)
+        layout.addView(back)
 
         setContentView(layout)
     }
@@ -930,7 +1082,7 @@ class MainActivity : AppCompatActivity() {
         amount: Double,
         type: String,
         status: String,
-        blockNumber: String = "Testnet"
+        block: String
     ) {
 
         val preferences =
@@ -955,15 +1107,21 @@ class MainActivity : AppCompatActivity() {
 
         val transaction =
             """
-            ━━━━━━━━━━━━━━━━━━━
+            ━━━━━━━━━━━━━━━━━━
             $type KHT
+
             Amount: $amount KHT
-            From: $sender
-            To: $receiver
+
+            From:
+            $sender
+
+            To:
+            $receiver
+
             Status: $status
-            Block: $blockNumber
+            Block: $block
             Time: $time
-            ━━━━━━━━━━━━━━━━━━━
+            ━━━━━━━━━━━━━━━━━━
             """.trimIndent()
 
         val newHistory =
@@ -984,30 +1142,22 @@ class MainActivity : AppCompatActivity() {
 
     private fun showHistoryScreen() {
 
+        val scroll =
+            ScrollView(this)
+
         val layout =
-            LinearLayout(this)
+            createScreenLayout()
 
-        layout.orientation =
-            LinearLayout.VERTICAL
-
-        layout.gravity =
-            Gravity.TOP
-
-        layout.setPadding(
-            25,
-            35,
-            25,
-            25
-        )
+        scroll.addView(layout)
 
         val title =
             createText(
                 "TRANSACTION HISTORY",
-                26f,
+                27f,
                 Color.BLACK
             )
 
-        val walletLabel =
+        val wallet =
             createText(
                 "Wallet $selectedWallet",
                 18f,
@@ -1024,7 +1174,7 @@ class MainActivity : AppCompatActivity() {
                     ""
                 )
 
-        val historyText =
+        val historyView =
             createText(
                 if (
                     history.isNullOrEmpty()
@@ -1037,16 +1187,16 @@ class MainActivity : AppCompatActivity() {
                 Color.DKGRAY
             )
 
-        historyText.gravity =
+        historyView.gravity =
             Gravity.START
 
-        val clearButton =
+        val clear =
             Button(this)
 
-        clearButton.text =
+        clear.text =
             "CLEAR LOCAL HISTORY"
 
-        clearButton.setOnClickListener {
+        clear.setOnClickListener {
 
             getSharedPreferences(
                 preferencesName,
@@ -1059,24 +1209,24 @@ class MainActivity : AppCompatActivity() {
             showHistoryScreen()
         }
 
-        val backButton =
+        val back =
             Button(this)
 
-        backButton.text =
+        back.text =
             "BACK"
 
-        backButton.setOnClickListener {
+        back.setOnClickListener {
 
             showMainScreen()
         }
 
         layout.addView(title)
-        layout.addView(walletLabel)
-        layout.addView(historyText)
-        layout.addView(clearButton)
-        layout.addView(backButton)
+        layout.addView(wallet)
+        layout.addView(historyView)
+        layout.addView(clear)
+        layout.addView(back)
 
-        setContentView(layout)
+        setContentView(scroll)
     }
 
     private fun getRequest(
@@ -1177,10 +1327,8 @@ class MainActivity : AppCompatActivity() {
                 """"balance"\s*:\s*([-+]?[0-9]*\.?[0-9]+)"""
             )
 
-        val match =
-            regex.find(response)
-
-        return match
+        return regex
+            .find(response)
             ?.groupValues
             ?.getOrNull(1)
             ?.toDoubleOrNull()
@@ -1195,16 +1343,14 @@ class MainActivity : AppCompatActivity() {
                 """"index"\s*:\s*(\d+)"""
             )
 
-        val match =
-            regex.find(response)
-
-        return match
+        return regex
+            .find(response)
             ?.groupValues
             ?.getOrNull(1)
             ?: "Testnet"
     }
 
-    private fun createLayout():
+    private fun createScreenLayout():
             LinearLayout {
 
         val layout =
@@ -1214,13 +1360,13 @@ class MainActivity : AppCompatActivity() {
             LinearLayout.VERTICAL
 
         layout.gravity =
-            Gravity.CENTER
+            Gravity.CENTER_HORIZONTAL
 
         layout.setPadding(
-            40,
-            40,
-            40,
-            40
+            25,
+            35,
+            25,
+            35
         )
 
         return layout
@@ -1250,11 +1396,33 @@ class MainActivity : AppCompatActivity() {
 
         view.setPadding(
             10,
+            12,
             10,
-            10,
-            10
+            12
         )
 
         return view
+    }
+
+    private fun marginParams():
+            LinearLayout.LayoutParams {
+
+        return LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            bottomMargin = 8
+        }
+    }
+
+    private fun buttonParams():
+            LinearLayout.LayoutParams {
+
+        return LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            bottomMargin = 6
+        }
     }
 }
