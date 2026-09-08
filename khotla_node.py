@@ -1,75 +1,83 @@
-from khotla_chain import KhotlaChain
 from khotla_wallet import KhotlaWallet
 from khotla_transaction import KhotlaTransaction
+from khotla_chain import KhotlaChain
 
 
 def main():
+
     print("================================")
     print("       KHOTLA CHAIN TESTNET")
     print("================================")
     print()
 
-    # Create two wallets
-    sender = KhotlaWallet()
-    receiver = KhotlaWallet()
+    sender_wallet = KhotlaWallet()
+    receiver_wallet = KhotlaWallet()
 
     print("Sender wallet:")
-    print(sender.address)
+    print(sender_wallet.address)
     print()
 
     print("Receiver wallet:")
-    print(receiver.address)
+    print(receiver_wallet.address)
     print()
 
-    # Create blockchain
     blockchain = KhotlaChain()
 
     print("Blockchain started.")
     print()
 
-    # Create a test transaction
     transaction = KhotlaTransaction(
-        sender.address,
-        receiver.address,
+        sender_wallet.address,
+        receiver_wallet.address,
         100
     )
 
-    # Sign the transaction
-    transaction.signature = sender.sign_message(
+    signature = sender_wallet.sign_message(
         transaction.transaction_hash()
     )
 
-    # Add transaction to blockchain
-    blockchain.add_transaction(
-        transaction.sender,
-        transaction.receiver,
-        transaction.amount
-    )
+    transaction.signature = signature
+    transaction.public_key = sender_wallet.public_key
 
     print("Transaction created.")
     print("Amount:", transaction.amount, "KHT")
     print()
 
-    # Mine the transaction
+    if not transaction.is_valid():
+
+        raise ValueError(
+            "Transaction signature is invalid."
+        )
+
+    blockchain.add_transaction(
+        sender_wallet.address,
+        receiver_wallet.address,
+        transaction.amount,
+        transaction.transaction_id,
+        transaction.signature,
+        transaction.public_key
+    )
+
+    print("Transaction signed.")
+    print()
+
     block = blockchain.mine()
 
-    if block:
-        print("Block mined successfully!")
-        print("Block number:", block.index)
-        print("Block hash:", block.hash)
-    else:
-        print("No transactions to mine.")
+    print("Block mined.")
+    print("Block:", block.index)
+    print("Hash:", block.hash)
+    print()
+
+    print(
+        "Blockchain valid:",
+        blockchain.is_valid()
+    )
 
     print()
 
-    # Verify blockchain
-    if blockchain.is_valid():
-        print("Blockchain status: VALID")
-    else:
-        print("Blockchain status: INVALID")
-
-    print()
-    print("Khotla Testnet is running.")
+    print("================================")
+    print("       KHOTLA TESTNET OK")
+    print("================================")
 
 
 if __name__ == "__main__":
