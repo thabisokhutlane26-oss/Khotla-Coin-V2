@@ -12,22 +12,31 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import java.security.MessageDigest
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.net.HttpURLConnection
+import java.net.URL
+import java.net.URLEncoder
 import java.util.UUID
+import java.security.MessageDigest
+import java.io.OutputStreamWriter
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var balanceText: TextView
     private lateinit var addressText: TextView
     private lateinit var statusText: TextView
-    private lateinit var historyText: TextView
 
     private var walletAddress: String? = null
+    private var walletBalance = 0.0
 
     private val preferencesName = "khotla_wallet"
     private val addressKey = "wallet_address"
     private val balanceKey = "wallet_balance"
     private val historyKey = "transaction_history"
+
+    private val apiBaseUrl =
+        "https://khotla-coin-v2-1.onrender.com"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -47,6 +56,11 @@ class MainActivity : AppCompatActivity() {
             addressKey,
             null
         )
+
+        walletBalance = preferences.getFloat(
+            balanceKey,
+            0f
+        ).toDouble()
     }
 
     private fun saveWallet(address: String) {
@@ -58,6 +72,19 @@ class MainActivity : AppCompatActivity() {
             .edit()
             .putString(addressKey, address)
             .putFloat(balanceKey, 0f)
+            .apply()
+    }
+
+    private fun saveBalance(balance: Double) {
+
+        walletBalance = balance
+
+        getSharedPreferences(
+            preferencesName,
+            Context.MODE_PRIVATE
+        )
+            .edit()
+            .putFloat(balanceKey, balance.toFloat())
             .apply()
     }
 
@@ -104,6 +131,13 @@ class MainActivity : AppCompatActivity() {
             createWallet()
         }
 
+        val faucetButton = Button(this)
+        faucetButton.text = "GET TESTNET KHT"
+
+        faucetButton.setOnClickListener {
+            requestFaucet()
+        }
+
         val receiveButton = Button(this)
         receiveButton.text = "RECEIVE KHT"
 
@@ -144,6 +178,7 @@ class MainActivity : AppCompatActivity() {
         layout.addView(balanceText)
         layout.addView(addressText)
         layout.addView(createButton)
+        layout.addView(faucetButton)
         layout.addView(receiveButton)
         layout.addView(sendButton)
         layout.addView(refreshButton)
@@ -197,10 +232,69 @@ class MainActivity : AppCompatActivity() {
         }
 
         balanceText.text =
-            "\nBalance\n0 KHT"
+            "\nBalance\n${walletBalance} KHT"
 
         addressText.text =
             "\nWallet Address\n\n$walletAddress"
+    }
+
+    private fun requestFaucet() {
+
+        if (walletAddress == null) {
+
+            statusText.text =
+                "Create a wallet first."
+
+            return
+        }
+
+        statusText.text =
+            "Connecting to Khotla Testnet...\nPlease wait."
+
+        Thread {
+
+            try {
+
+                val json =
+                    """
+                    {
+                        "address": "${walletAddress}",
+                        "amount": 100
+                    }
+                    """.trimIndent()
+
+                val response =
+                    postRequest(
+                        "$apiBaseUrl/faucet",
+                        json
+                    )
+
+                runOnUiThread {
+
+                    if (response.contains("\"error\"")) {
+
+                        statusText.text =
+                            "Faucet error:\n$response"
+
+                    } else {
+
+                        statusText.text =
+                            "100 KHT received!\nRefreshing balance..."
+
+                        refreshBalance()
+                    }
+                }
+
+            } catch (e: Exception) {
+
+                runOnUiThread {
+
+                    statusText.text =
+                        "Connection error:\n${e.message}"
+                }
+            }
+
+        }.start()
     }
 
     private fun refreshBalance() {
@@ -213,11 +307,54 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        balanceText.text =
-            "\nBalance\n0 KHT"
-
         statusText.text =
-            "Balance refreshed.\nKhotla Testnet"
+            "Checking Khotla Testnet..."
+
+        Thread {
+
+            try {
+
+                val encodedAddress =
+                    URLEncoder.encode(
+                        walletAddress,
+                        "UTF-8"
+                    )
+
+                val response =
+                    getRequest(
+                        "$apiBaseUrl/balance?address=$encodedAddress"
+                    )
+
+                val balance =
+                    extractBalance(response)
+
+                runOnUiThread {
+
+                    if (balance != null) {
+
+                        saveBalance(balance)
+                        updateWalletDisplay()
+
+                        statusText.text =
+                            "Balance updated.\nKhotla Testnet"
+
+                    } else {
+
+                        statusText.text =
+                            "Could not read balance.\n$response"
+                    }
+                }
+
+            } catch (e: Exception) {
+
+                runOnUiThread {
+
+                    statusText.text =
+                        "Connection error:\n${e.message}"
+                }
+            }
+
+        }.start()
     }
 
     private fun showReceiveScreen() {
@@ -315,7 +452,7 @@ class MainActivity : AppCompatActivity() {
         )
 
         val warning = createText(
-            "Khotla Testnet\n\nThis is a prototype transaction screen.",
+            "Khotla Testnet\n\nPrototype testnet transfer.",
             16f,
             Color.DKGRAY
         )
@@ -365,21 +502,81 @@ class MainActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
-            /*
-             * Testnet prototype:
-             * No real blockchain transfer happens here yet.
-             */
+            if (amount > walletBalance) {
 
-            saveTransaction(
-                receiver,
-                amount
-            )
+                result.text =
+                    "Insufficient KHT balance.\n\n" +
+                    "Available: $walletBalance KHT"
+
+                return@setOnClickListener
+            }
 
             result.text =
-                "Transaction created for testnet.\n\n" +
-                "To: $receiver\n" +
-                "Amount: $amount KHT\n\n" +
-                "Blockchain transfer will be connected in the next stage."
+                "Sending to Khotla Testnet..."
+
+            Thread {
+
+                try {
+
+                    val json =
+                        """
+                        {
+                            "sender": "$walletAddress",
+                            "receiver": "$receiver",
+                            "amount": $amount
+                        }
+                        """.trimIndent()
+
+                    val transactionResponse =
+                        postRequest(
+                            "$apiBaseUrl/transaction",
+                            json
+                        )
+
+                    if (transactionResponse.contains("\"error\"")) {
+
+                        runOnUiThread {
+
+                            result.text =
+                                "Transaction error:\n$transactionResponse"
+                        }
+
+                        return@Thread
+                    }
+
+                    val mineResponse =
+                        postRequest(
+                            "$apiBaseUrl/mine",
+                            "{}"
+                        )
+
+                    runOnUiThread {
+
+                        saveTransaction(
+                            receiver,
+                            amount
+                        )
+
+                        result.text =
+                            "KHT transaction submitted!\n\n" +
+                            "To: $receiver\n" +
+                            "Amount: $amount KHT\n\n" +
+                            "Testnet block mined.\n\n" +
+                            "Refreshing balance..."
+
+                        refreshBalance()
+                    }
+
+                } catch (e: Exception) {
+
+                    runOnUiThread {
+
+                        result.text =
+                            "Connection error:\n${e.message}"
+                    }
+                }
+
+            }.start()
         }
 
         val backButton = Button(this)
@@ -458,7 +655,7 @@ class MainActivity : AppCompatActivity() {
                 ""
             )
 
-        historyText = createText(
+        val historyText = createText(
             if (history.isNullOrEmpty()) {
                 "No transactions yet."
             } else {
@@ -480,6 +677,93 @@ class MainActivity : AppCompatActivity() {
         layout.addView(backButton)
 
         setContentView(layout)
+    }
+
+    private fun getRequest(
+        urlString: String
+    ): String {
+
+        val connection =
+            URL(urlString)
+                .openConnection() as HttpURLConnection
+
+        connection.requestMethod = "GET"
+        connection.connectTimeout = 60000
+        connection.readTimeout = 60000
+
+        return readResponse(connection)
+    }
+
+    private fun postRequest(
+        urlString: String,
+        json: String
+    ): String {
+
+        val connection =
+            URL(urlString)
+                .openConnection() as HttpURLConnection
+
+        connection.requestMethod = "POST"
+        connection.connectTimeout = 60000
+        connection.readTimeout = 60000
+        connection.doOutput = true
+
+        connection.setRequestProperty(
+            "Content-Type",
+            "application/json"
+        )
+
+        OutputStreamWriter(
+            connection.outputStream
+        ).use { writer ->
+
+            writer.write(json)
+            writer.flush()
+        }
+
+        return readResponse(connection)
+    }
+
+    private fun readResponse(
+        connection: HttpURLConnection
+    ): String {
+
+        val responseCode =
+            connection.responseCode
+
+        val stream =
+            if (responseCode in 200..299) {
+                connection.inputStream
+            } else {
+                connection.errorStream
+            }
+
+        val reader =
+            BufferedReader(
+                InputStreamReader(stream)
+            )
+
+        return reader.use {
+            it.readText()
+        }
+    }
+
+    private fun extractBalance(
+        response: String
+    ): Double? {
+
+        val regex =
+            Regex(
+                """"balance"\s*:\s*([-+]?[0-9]*\.?[0-9]+)"""
+            )
+
+        val match =
+            regex.find(response)
+
+        return match
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.toDoubleOrNull()
     }
 
     private fun createLayout(): LinearLayout {
