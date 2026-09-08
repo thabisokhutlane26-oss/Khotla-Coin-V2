@@ -1,21 +1,43 @@
 import hashlib
 import json
 import time
+import uuid
 
 
 class KhotlaTransaction:
-    def __init__(self, sender, receiver, amount, signature=None):
+
+    def __init__(
+        self,
+        sender,
+        receiver,
+        amount,
+        signature=None,
+        transaction_id=None,
+        timestamp=None
+    ):
         if amount <= 0:
-            raise ValueError("Amount must be greater than zero.")
+            raise ValueError(
+                "Amount must be greater than zero."
+            )
+
+        self.transaction_id = (
+            transaction_id
+            or str(uuid.uuid4())
+        )
 
         self.sender = sender
         self.receiver = receiver
-        self.amount = amount
-        self.timestamp = time.time()
+        self.amount = float(amount)
+        self.timestamp = (
+            timestamp
+            if timestamp is not None
+            else time.time()
+        )
         self.signature = signature
 
     def to_dict(self):
         return {
+            "transaction_id": self.transaction_id,
             "sender": self.sender,
             "receiver": self.receiver,
             "amount": self.amount,
@@ -23,30 +45,49 @@ class KhotlaTransaction:
             "signature": self.signature
         }
 
-    def transaction_hash(self):
-        data = json.dumps(
-            self.to_dict(),
-            sort_keys=True
+    def signing_data(self):
+        data = {
+            "transaction_id": self.transaction_id,
+            "sender": self.sender,
+            "receiver": self.receiver,
+            "amount": self.amount,
+            "timestamp": self.timestamp
+        }
+
+        return json.dumps(
+            data,
+            sort_keys=True,
+            separators=(",", ":")
         )
 
+    def transaction_hash(self):
         return hashlib.sha256(
-            data.encode()
+            self.signing_data().encode("utf-8")
         ).hexdigest()
 
     def is_valid(self):
-        if self.sender == "KHT_GENESIS":
-            return True
 
-        if not self.signature:
+        if not self.sender:
             return False
 
         if not self.receiver:
             return False
 
+        if self.amount <= 0:
+            return False
+
+        if not self.transaction_id:
+            return False
+
+        if self.sender != "KHT_GENESIS":
+            if not self.signature:
+                return False
+
         return True
 
 
 if __name__ == "__main__":
+
     transaction = KhotlaTransaction(
         "KHT_GENESIS",
         "THABISO_WALLET",
@@ -55,6 +96,7 @@ if __name__ == "__main__":
 
     print("Khotla Transaction")
     print("------------------")
+    print("ID:", transaction.transaction_id)
     print("Sender:", transaction.sender)
     print("Receiver:", transaction.receiver)
     print("Amount:", transaction.amount, "KHT")
