@@ -1,13 +1,10 @@
 import json
+import os
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import urlparse, parse_qs
 
 from khotla_chain import KhotlaChain
 
-
-# ==========================================
-# KHOTLA TESTNET API
-# ==========================================
 
 blockchain = KhotlaChain()
 
@@ -17,7 +14,6 @@ def calculate_balance(address):
 
     for block in blockchain.chain:
         for transaction in block.transactions:
-
             sender = transaction.get("sender")
             receiver = transaction.get("receiver")
             amount = float(transaction.get("amount", 0))
@@ -45,30 +41,25 @@ def block_to_dict(block):
 class KhotlaAPI(BaseHTTPRequestHandler):
 
     def send_json(self, data, status=200):
-
         response = json.dumps(
             data,
             indent=2
         ).encode("utf-8")
 
         self.send_response(status)
-
         self.send_header(
             "Content-Type",
             "application/json"
         )
-
         self.send_header(
             "Content-Length",
             str(len(response))
         )
-
         self.end_headers()
 
         self.wfile.write(response)
 
     def read_json(self):
-
         content_length = int(
             self.headers.get(
                 "Content-Length",
@@ -89,15 +80,20 @@ class KhotlaAPI(BaseHTTPRequestHandler):
 
     def do_GET(self):
 
-        parsed = urlparse(
-            self.path
-        )
-
+        parsed = urlparse(self.path)
         path = parsed.path
 
-        # ----------------------------------
-        # STATUS
-        # ----------------------------------
+        if path == "/":
+
+            self.send_json({
+                "name": "Khotla Testnet API",
+                "coin": "Khotla Coin",
+                "ticker": "KHT",
+                "network": "Khotla Testnet",
+                "status": "online"
+            })
+
+            return
 
         if path == "/status":
 
@@ -115,15 +111,9 @@ class KhotlaAPI(BaseHTTPRequestHandler):
 
             return
 
-        # ----------------------------------
-        # BALANCE
-        # ----------------------------------
-
         if path == "/balance":
 
-            query = parse_qs(
-                parsed.query
-            )
+            query = parse_qs(parsed.query)
 
             address = query.get(
                 "address",
@@ -138,22 +128,14 @@ class KhotlaAPI(BaseHTTPRequestHandler):
 
                 return
 
-            balance = calculate_balance(
-                address
-            )
-
             self.send_json({
                 "address": address,
-                "balance": balance,
+                "balance": calculate_balance(address),
                 "currency": "KHT",
                 "network": "Khotla Testnet"
             })
 
             return
-
-        # ----------------------------------
-        # BLOCKCHAIN
-        # ----------------------------------
 
         if path == "/chain":
 
@@ -166,32 +148,18 @@ class KhotlaAPI(BaseHTTPRequestHandler):
 
             self.send_json({
                 "chain": chain_data,
-                "length": len(
-                    blockchain.chain
-                )
+                "length": len(blockchain.chain)
             })
 
             return
 
-        # ----------------------------------
-        # UNKNOWN PAGE
-        # ----------------------------------
-
         self.send_json({
-            "error": "Endpoint not found.",
-            "available_endpoints": [
-                "/status",
-                "/balance?address=YOUR_ADDRESS",
-                "/chain"
-            ]
+            "error": "Endpoint not found."
         }, 404)
 
     def do_POST(self):
 
-        parsed = urlparse(
-            self.path
-        )
-
+        parsed = urlparse(self.path)
         path = parsed.path
 
         try:
@@ -204,23 +172,11 @@ class KhotlaAPI(BaseHTTPRequestHandler):
 
             return
 
-        # ----------------------------------
-        # CREATE TRANSACTION
-        # ----------------------------------
-
         if path == "/transaction":
 
-            sender = data.get(
-                "sender"
-            )
-
-            receiver = data.get(
-                "receiver"
-            )
-
-            amount = data.get(
-                "amount"
-            )
+            sender = data.get("sender")
+            receiver = data.get("receiver")
+            amount = data.get("amount")
 
             if not sender or not receiver:
 
@@ -248,14 +204,6 @@ class KhotlaAPI(BaseHTTPRequestHandler):
 
                 return
 
-            if not receiver.startswith("KHT"):
-
-                self.send_json({
-                    "error": "Invalid receiver KHT address."
-                }, 400)
-
-                return
-
             if not sender.startswith("KHT"):
 
                 self.send_json({
@@ -264,18 +212,25 @@ class KhotlaAPI(BaseHTTPRequestHandler):
 
                 return
 
-            sender_balance = calculate_balance(
-                sender
-            )
-
-            if sender != "KHT_FAUCET" and amount > sender_balance:
+            if not receiver.startswith("KHT"):
 
                 self.send_json({
-                    "error": "Insufficient KHT balance.",
-                    "balance": sender_balance
+                    "error": "Invalid receiver KHT address."
                 }, 400)
 
                 return
+
+            sender_balance = calculate_balance(sender)
+
+            if sender != "KHT_FAUCET":
+                if amount > sender_balance:
+
+                    self.send_json({
+                        "error": "Insufficient KHT balance.",
+                        "balance": sender_balance
+                    }, 400)
+
+                    return
 
             blockchain.add_transaction(
                 sender,
@@ -284,7 +239,7 @@ class KhotlaAPI(BaseHTTPRequestHandler):
             )
 
             self.send_json({
-                "message": "Transaction added to Khotla Testnet.",
+                "message": "Transaction added.",
                 "sender": sender,
                 "receiver": receiver,
                 "amount": amount,
@@ -293,10 +248,6 @@ class KhotlaAPI(BaseHTTPRequestHandler):
             })
 
             return
-
-        # ----------------------------------
-        # MINE BLOCK
-        # ----------------------------------
 
         if path == "/mine":
 
@@ -317,20 +268,10 @@ class KhotlaAPI(BaseHTTPRequestHandler):
 
             return
 
-        # ----------------------------------
-        # TESTNET FAUCET
-        # ----------------------------------
-
         if path == "/faucet":
 
-            address = data.get(
-                "address"
-            )
-
-            amount = data.get(
-                "amount",
-                100
-            )
+            address = data.get("address")
+            amount = data.get("amount", 100)
 
             if not address:
 
@@ -385,10 +326,6 @@ class KhotlaAPI(BaseHTTPRequestHandler):
 
             return
 
-        # ----------------------------------
-        # UNKNOWN POST ENDPOINT
-        # ----------------------------------
-
         self.send_json({
             "error": "Endpoint not found."
         }, 404)
@@ -397,7 +334,15 @@ class KhotlaAPI(BaseHTTPRequestHandler):
 def run_server():
 
     host = "0.0.0.0"
-    port = 8080
+
+    # Render provides PORT automatically.
+    # Local testing uses 8080.
+    port = int(
+        os.environ.get(
+            "PORT",
+            "8080"
+        )
+    )
 
     server = HTTPServer(
         (host, port),
@@ -414,15 +359,9 @@ def run_server():
     print()
     print("API running on port:", port)
     print()
-    print("Endpoints:")
-    print("GET  /status")
-    print("GET  /balance?address=YOUR_ADDRESS")
-    print("GET  /chain")
-    print("POST /transaction")
-    print("POST /mine")
-    print("POST /faucet")
-    print()
     print("Khotla Testnet API is running!")
+
+    server.serve_forever()
 
 
 if __name__ == "__main__":
