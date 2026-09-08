@@ -1,7 +1,12 @@
+import base64
 import hashlib
 import json
 import os
 import time
+
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+    Ed25519PublicKey
+)
 
 
 CHAIN_FILE = "khotla_chain_data.json"
@@ -18,17 +23,14 @@ class Block:
         nonce=0
     ):
         self.index = index
-
         self.timestamp = (
             timestamp
             if timestamp is not None
             else time.time()
         )
-
         self.transactions = transactions
         self.previous_hash = previous_hash
         self.nonce = nonce
-
         self.hash = self.calculate_hash()
 
     def calculate_hash(self):
@@ -58,7 +60,6 @@ class Block:
         while not self.hash.startswith(target):
 
             self.nonce += 1
-
             self.hash = self.calculate_hash()
 
 
@@ -76,11 +77,8 @@ class KhotlaChain:
         loaded = self.load_chain()
 
         if loaded:
-
             self.chain = loaded
-
         else:
-
             self.chain = [
                 self.create_genesis_block()
             ]
@@ -159,14 +157,71 @@ class KhotlaChain:
 
         return transaction
 
-    def validate_transaction(self, transaction):
+    def transaction_signing_data(
+        self,
+        transaction
+    ):
 
-        sender = transaction.get("sender")
-        receiver = transaction.get("receiver")
-        amount = transaction.get("amount")
+        data = {
+            "transaction_id": transaction.get(
+                "transaction_id"
+            ),
+            "sender": transaction.get(
+                "sender"
+            ),
+            "receiver": transaction.get(
+                "receiver"
+            ),
+            "amount": float(
+                transaction.get(
+                    "amount"
+                )
+            ),
+            "timestamp": transaction.get(
+                "timestamp"
+            )
+        }
+
+        return json.dumps(
+            data,
+            sort_keys=True,
+            separators=(",", ":")
+        )
+
+    def validate_transaction(
+        self,
+        transaction
+    ):
+
+        sender = transaction.get(
+            "sender"
+        )
+
+        receiver = transaction.get(
+            "receiver"
+        )
+
         transaction_id = transaction.get(
             "transaction_id"
         )
+
+        signature = transaction.get(
+            "signature"
+        )
+
+        public_key = transaction.get(
+            "public_key"
+        )
+
+        try:
+            amount = float(
+                transaction.get(
+                    "amount"
+                )
+            )
+        except (TypeError, ValueError):
+
+            return False
 
         if not sender:
             return False
@@ -177,24 +232,11 @@ class KhotlaChain:
         if not transaction_id:
             return False
 
-        try:
-            amount = float(amount)
-        except (TypeError, ValueError):
-            return False
-
         if amount <= 0:
             return False
 
         if sender == "KHT_GENESIS":
             return True
-
-        signature = transaction.get(
-            "signature"
-        )
-
-        public_key = transaction.get(
-            "public_key"
-        )
 
         if not signature:
             return False
@@ -202,24 +244,68 @@ class KhotlaChain:
         if not public_key:
             return False
 
-        expected_address = (
-            "KHT"
-            + hashlib.sha256(
-                public_key.encode("utf-8")
-            ).hexdigest()[:40]
-        )
+        try:
 
-        if expected_address != sender:
+            public_key_bytes = bytes.fromhex(
+                public_key
+            )
+
+            if len(public_key_bytes) != 32:
+                return False
+
+            expected_address = (
+                "KHT"
+                + hashlib.sha256(
+                    public_key_bytes
+                ).hexdigest()[:40]
+            )
+
+            if expected_address != sender:
+                return False
+
+            signature_bytes = base64.b64decode(
+                signature,
+                validate=True
+            )
+
+            if len(signature_bytes) != 64:
+                return False
+
+            signing_data = (
+                self.transaction_signing_data(
+                    transaction
+                )
+            )
+
+            transaction_hash = hashlib.sha256(
+                signing_data.encode("utf-8")
+            ).hexdigest()
+
+            public_key_object = (
+                Ed25519PublicKey.from_public_bytes(
+                    public_key_bytes
+                )
+            )
+
+            public_key_object.verify(
+                signature_bytes,
+                transaction_hash.encode("utf-8")
+            )
+
+            return True
+
+        except Exception:
+
             return False
-
-        return True
 
     def mine(self):
 
         if not self.pending_transactions:
             return None
 
-        for transaction in self.pending_transactions:
+        for transaction in (
+            self.pending_transactions
+        ):
 
             if not self.validate_transaction(
                 transaction
@@ -278,7 +364,9 @@ class KhotlaChain:
             ):
                 return False
 
-            for transaction in current.transactions:
+            for transaction in (
+                current.transactions
+            ):
 
                 if not self.validate_transaction(
                     transaction
@@ -402,9 +490,4 @@ if __name__ == "__main__":
     print(
         "Chain valid:",
         chain.is_valid()
-    )
-
-    print(
-        "KHT transferred:",
-        1000
     )
