@@ -18,6 +18,9 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 import java.security.MessageDigest
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.UUID
 
 class MainActivity : AppCompatActivity() {
@@ -515,6 +518,14 @@ class MainActivity : AppCompatActivity() {
 
                     } else {
 
+                        saveTransaction(
+                            "KHT_FAUCET",
+                            address,
+                            100.0,
+                            "RECEIVED",
+                            "CONFIRMED"
+                        )
+
                         statusText.text =
                             "100 KHT received!\nRefreshing balance..."
 
@@ -845,17 +856,26 @@ class MainActivity : AppCompatActivity() {
                         return@Thread
                     }
 
-                    postRequest(
-                        "$apiBaseUrl/mine",
-                        "{}"
-                    )
+                    val mineResponse =
+                        postRequest(
+                            "$apiBaseUrl/mine",
+                            "{}"
+                        )
+
+                    val blockNumber =
+                        extractBlockNumber(
+                            mineResponse
+                        )
 
                     runOnUiThread {
 
                         saveTransaction(
                             sender,
                             receiver,
-                            amount
+                            amount,
+                            "SENT",
+                            "CONFIRMED",
+                            blockNumber
                         )
 
                         result.text =
@@ -907,7 +927,10 @@ class MainActivity : AppCompatActivity() {
     private fun saveTransaction(
         sender: String,
         receiver: String,
-        amount: Double
+        amount: Double,
+        type: String,
+        status: String,
+        blockNumber: String = "Testnet"
     ) {
 
         val preferences =
@@ -922,14 +945,32 @@ class MainActivity : AppCompatActivity() {
                 ""
             ) ?: ""
 
+        val time =
+            SimpleDateFormat(
+                "yyyy-MM-dd HH:mm:ss",
+                Locale.getDefault()
+            ).format(
+                Date()
+            )
+
         val transaction =
-            "SEND | $amount KHT | FROM $sender | TO $receiver"
+            """
+            ━━━━━━━━━━━━━━━━━━━
+            $type KHT
+            Amount: $amount KHT
+            From: $sender
+            To: $receiver
+            Status: $status
+            Block: $blockNumber
+            Time: $time
+            ━━━━━━━━━━━━━━━━━━━
+            """.trimIndent()
 
         val newHistory =
             if (oldHistory.isEmpty()) {
                 transaction
             } else {
-                "$oldHistory\n$transaction"
+                "$transaction\n\n$oldHistory"
             }
 
         preferences
@@ -944,26 +985,44 @@ class MainActivity : AppCompatActivity() {
     private fun showHistoryScreen() {
 
         val layout =
-            createLayout()
+            LinearLayout(this)
+
+        layout.orientation =
+            LinearLayout.VERTICAL
+
+        layout.gravity =
+            Gravity.TOP
+
+        layout.setPadding(
+            25,
+            35,
+            25,
+            25
+        )
 
         val title =
             createText(
                 "TRANSACTION HISTORY",
-                25f,
+                26f,
                 Color.BLACK
             )
 
-        val preferences =
+        val walletLabel =
+            createText(
+                "Wallet $selectedWallet",
+                18f,
+                Color.DKGRAY
+            )
+
+        val history =
             getSharedPreferences(
                 preferencesName,
                 Context.MODE_PRIVATE
             )
-
-        val history =
-            preferences.getString(
-                historyKey,
-                ""
-            )
+                .getString(
+                    historyKey,
+                    ""
+                )
 
         val historyText =
             createText(
@@ -974,9 +1033,31 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     history
                 },
-                15f,
+                14f,
                 Color.DKGRAY
             )
+
+        historyText.gravity =
+            Gravity.START
+
+        val clearButton =
+            Button(this)
+
+        clearButton.text =
+            "CLEAR LOCAL HISTORY"
+
+        clearButton.setOnClickListener {
+
+            getSharedPreferences(
+                preferencesName,
+                Context.MODE_PRIVATE
+            )
+                .edit()
+                .remove(historyKey)
+                .apply()
+
+            showHistoryScreen()
+        }
 
         val backButton =
             Button(this)
@@ -990,7 +1071,9 @@ class MainActivity : AppCompatActivity() {
         }
 
         layout.addView(title)
+        layout.addView(walletLabel)
         layout.addView(historyText)
+        layout.addView(clearButton)
         layout.addView(backButton)
 
         setContentView(layout)
@@ -1101,6 +1184,24 @@ class MainActivity : AppCompatActivity() {
             ?.groupValues
             ?.getOrNull(1)
             ?.toDoubleOrNull()
+    }
+
+    private fun extractBlockNumber(
+        response: String
+    ): String {
+
+        val regex =
+            Regex(
+                """"index"\s*:\s*(\d+)"""
+            )
+
+        val match =
+            regex.find(response)
+
+        return match
+            ?.groupValues
+            ?.getOrNull(1)
+            ?: "Testnet"
     }
 
     private fun createLayout():
