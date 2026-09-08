@@ -26,6 +26,38 @@ def main():
     print("Blockchain started.")
     print()
 
+    # --------------------------------
+    # FUND SENDER FROM TESTNET GENESIS
+    # --------------------------------
+
+    blockchain.add_transaction(
+        sender="KHT_GENESIS",
+        receiver=sender_wallet.address,
+        amount=200
+    )
+
+    faucet_block = blockchain.mine()
+
+    if faucet_block is None:
+
+        raise ValueError(
+            "Failed to fund sender wallet."
+        )
+
+    print("Sender funded.")
+    print(
+        "Sender balance:",
+        blockchain.get_balance(
+            sender_wallet.address
+        ),
+        "KHT"
+    )
+    print()
+
+    # --------------------------------
+    # CREATE SIGNED TRANSACTION
+    # --------------------------------
+
     transaction = KhotlaTransaction(
         sender_wallet.address,
         receiver_wallet.address,
@@ -40,14 +72,29 @@ def main():
     transaction.public_key = sender_wallet.public_key
 
     print("Transaction created.")
-    print("Amount:", transaction.amount, "KHT")
+    print(
+        "Amount:",
+        transaction.amount,
+        "KHT"
+    )
     print()
+
+    # --------------------------------
+    # VERIFY TRANSACTION
+    # --------------------------------
 
     if not transaction.is_valid():
 
         raise ValueError(
             "Transaction signature is invalid."
         )
+
+    print("Transaction signature: VALID")
+    print()
+
+    # --------------------------------
+    # ADD TRANSACTION
+    # --------------------------------
 
     blockchain.add_transaction(
         sender=sender_wallet.address,
@@ -59,22 +106,97 @@ def main():
         timestamp=transaction.timestamp
     )
 
-    print("Transaction signed.")
+    print("Transaction added.")
     print()
+
+    # --------------------------------
+    # MINE TRANSACTION
+    # --------------------------------
 
     block = blockchain.mine()
 
+    if block is None:
+
+        raise ValueError(
+            "Transaction was not mined."
+        )
+
     print("Block mined.")
-    print("Block:", block.index)
-    print("Hash:", block.hash)
-    print()
+    print(
+        "Block:",
+        block.index
+    )
 
     print(
-        "Blockchain valid:",
-        blockchain.is_valid()
+        "Hash:",
+        block.hash
     )
 
     print()
+
+    # --------------------------------
+    # FINAL BALANCES
+    # --------------------------------
+
+    sender_balance = (
+        blockchain.get_balance(
+            sender_wallet.address
+        )
+    )
+
+    receiver_balance = (
+        blockchain.get_balance(
+            receiver_wallet.address
+        )
+    )
+
+    print("Final balances:")
+    print(
+        "Sender:",
+        sender_balance,
+        "KHT"
+    )
+
+    print(
+        "Receiver:",
+        receiver_balance,
+        "KHT"
+    )
+
+    print()
+
+    # --------------------------------
+    # VALIDATE BLOCKCHAIN
+    # --------------------------------
+
+    chain_valid = (
+        blockchain.is_valid()
+    )
+
+    print(
+        "Blockchain valid:",
+        chain_valid
+    )
+
+    print()
+
+    if not chain_valid:
+
+        raise ValueError(
+            "Blockchain validation failed."
+        )
+
+    if sender_balance != 100:
+
+        raise ValueError(
+            "Sender balance is incorrect."
+        )
+
+    if receiver_balance != 100:
+
+        raise ValueError(
+            "Receiver balance is incorrect."
+        )
 
     print("================================")
     print("       KHOTLA TESTNET OK")
