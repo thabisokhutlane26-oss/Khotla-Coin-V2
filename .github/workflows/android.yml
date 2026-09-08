@@ -33,8 +33,14 @@ jobs:
         working-directory: android
         run: gradle assembleDebug
 
+      - name: Find APK
+        run: |
+          echo "APK files found:"
+          find android/app/build/outputs -type f -name "*.apk" -print
+
       - name: Upload APK
         uses: actions/upload-artifact@v5
         with:
           name: khotla-wallet-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
