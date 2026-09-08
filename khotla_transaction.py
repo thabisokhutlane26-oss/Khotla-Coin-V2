@@ -12,9 +12,11 @@ class KhotlaTransaction:
         receiver,
         amount,
         signature=None,
+        public_key=None,
         transaction_id=None,
         timestamp=None
     ):
+
         if amount <= 0:
             raise ValueError(
                 "Amount must be greater than zero."
@@ -28,24 +30,18 @@ class KhotlaTransaction:
         self.sender = sender
         self.receiver = receiver
         self.amount = float(amount)
+
         self.timestamp = (
             timestamp
             if timestamp is not None
             else time.time()
         )
-        self.signature = signature
 
-    def to_dict(self):
-        return {
-            "transaction_id": self.transaction_id,
-            "sender": self.sender,
-            "receiver": self.receiver,
-            "amount": self.amount,
-            "timestamp": self.timestamp,
-            "signature": self.signature
-        }
+        self.signature = signature
+        self.public_key = public_key
 
     def signing_data(self):
+
         data = {
             "transaction_id": self.transaction_id,
             "sender": self.sender,
@@ -61,9 +57,47 @@ class KhotlaTransaction:
         )
 
     def transaction_hash(self):
+
         return hashlib.sha256(
             self.signing_data().encode("utf-8")
         ).hexdigest()
+
+    def to_dict(self):
+
+        return {
+            "transaction_id": self.transaction_id,
+            "sender": self.sender,
+            "receiver": self.receiver,
+            "amount": self.amount,
+            "timestamp": self.timestamp,
+            "signature": self.signature,
+            "public_key": self.public_key
+        }
+
+    def verify_signature(self):
+
+        if self.sender == "KHT_GENESIS":
+            return True
+
+        if not self.signature:
+            return False
+
+        if not self.public_key:
+            return False
+
+        expected_address_hash = hashlib.sha256(
+            self.public_key.encode("utf-8")
+        ).hexdigest()
+
+        expected_address = (
+            "KHT"
+            + expected_address_hash[:40]
+        )
+
+        if expected_address != self.sender:
+            return False
+
+        return True
 
     def is_valid(self):
 
@@ -79,11 +113,10 @@ class KhotlaTransaction:
         if not self.transaction_id:
             return False
 
-        if self.sender != "KHT_GENESIS":
-            if not self.signature:
-                return False
+        if self.sender == "KHT_GENESIS":
+            return True
 
-        return True
+        return self.verify_signature()
 
 
 if __name__ == "__main__":
@@ -94,11 +127,38 @@ if __name__ == "__main__":
         1000
     )
 
-    print("Khotla Transaction")
-    print("------------------")
-    print("ID:", transaction.transaction_id)
-    print("Sender:", transaction.sender)
-    print("Receiver:", transaction.receiver)
-    print("Amount:", transaction.amount, "KHT")
-    print("Valid:", transaction.is_valid())
-    print("Hash:", transaction.transaction_hash())
+    print("================================")
+    print("     KHOTLA TRANSACTION")
+    print("================================")
+    print()
+
+    print(
+        "Transaction ID:",
+        transaction.transaction_id
+    )
+
+    print(
+        "Sender:",
+        transaction.sender
+    )
+
+    print(
+        "Receiver:",
+        transaction.receiver
+    )
+
+    print(
+        "Amount:",
+        transaction.amount,
+        "KHT"
+    )
+
+    print(
+        "Transaction Hash:",
+        transaction.transaction_hash()
+    )
+
+    print(
+        "Valid:",
+        transaction.is_valid()
+    )
