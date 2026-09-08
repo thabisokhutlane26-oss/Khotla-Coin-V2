@@ -97,6 +97,103 @@ class KhotlaChain:
 
         return self.chain[-1]
 
+    def get_balance(self, address):
+
+        if not address:
+            return 0.0
+
+        balance = 0.0
+
+        for block in self.chain:
+
+            for transaction in block.transactions:
+
+                sender = transaction.get(
+                    "sender"
+                )
+
+                receiver = transaction.get(
+                    "receiver"
+                )
+
+                try:
+
+                    amount = float(
+                        transaction.get(
+                            "amount",
+                            0
+                        )
+                    )
+
+                except (TypeError, ValueError):
+
+                    continue
+
+                if receiver == address:
+
+                    balance += amount
+
+                if sender == address:
+
+                    balance -= amount
+
+        return round(
+            balance,
+            8
+        )
+
+    def get_pending_spend(self, address):
+
+        if not address:
+            return 0.0
+
+        pending_spend = 0.0
+
+        for transaction in self.pending_transactions:
+
+            if transaction.get(
+                "sender"
+            ) != address:
+
+                continue
+
+            try:
+
+                amount = float(
+                    transaction.get(
+                        "amount",
+                        0
+                    )
+                )
+
+            except (TypeError, ValueError):
+
+                continue
+
+            if amount > 0:
+
+                pending_spend += amount
+
+        return round(
+            pending_spend,
+            8
+        )
+
+    def get_available_balance(self, address):
+
+        balance = self.get_balance(
+            address
+        )
+
+        pending_spend = self.get_pending_spend(
+            address
+        )
+
+        return round(
+            balance - pending_spend,
+            8
+        )
+
     def add_transaction(
         self,
         sender,
@@ -134,6 +231,20 @@ class KhotlaChain:
                 "Amount must be greater than zero."
             )
 
+        if sender != "KHT_GENESIS":
+
+            available_balance = (
+                self.get_available_balance(
+                    sender
+                )
+            )
+
+            if amount > available_balance:
+
+                raise ValueError(
+                    "Insufficient balance."
+                )
+
         if not transaction_id:
 
             transaction_id = hashlib.sha256(
@@ -158,6 +269,16 @@ class KhotlaChain:
             "signature": signature,
             "public_key": public_key
         }
+
+        if sender != "KHT_GENESIS":
+
+            if not self.validate_transaction(
+                transaction
+            ):
+
+                raise ValueError(
+                    "Invalid transaction."
+                )
 
         self.pending_transactions.append(
             transaction
@@ -252,7 +373,6 @@ class KhotlaChain:
         if timestamp is None:
             return False
 
-        # Genesis transactions are trusted.
         if sender == "KHT_GENESIS":
             return True
 
@@ -513,6 +633,14 @@ if __name__ == "__main__":
     print(
         "Hash:",
         block.hash
+    )
+
+    print(
+        "THABISO_WALLET balance:",
+        chain.get_balance(
+            "THABISO_WALLET"
+        ),
+        "KHT"
     )
 
     print(
