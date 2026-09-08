@@ -1,19 +1,67 @@
-import hashlib
 import html
 import json
 import os
 import time
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from khotla_chain import KhotlaChain
 
 
-blockchain = KhotlaChain()
+HOST = "0.0.0.0"
+PORT = int(os.environ.get("PORT", "10000"))
+
+chain = KhotlaChain()
+
+
+def json_response(handler, data, status=200):
+    body = json.dumps(
+        data,
+        indent=2,
+        default=str
+    ).encode("utf-8")
+
+    handler.send_response(status)
+    handler.send_header(
+        "Content-Type",
+        "application/json; charset=utf-8"
+    )
+    handler.send_header(
+        "Content-Length",
+        str(len(body))
+    )
+    handler.send_header(
+        "Access-Control-Allow-Origin",
+        "*"
+    )
+    handler.end_headers()
+
+    handler.wfile.write(body)
+
+
+def read_json(handler):
+    try:
+        length = int(
+            handler.headers.get(
+                "Content-Length",
+                "0"
+            )
+        )
+
+        if length <= 0:
+            return {}
+
+        body = handler.rfile.read(length)
+
+        return json.loads(
+            body.decode("utf-8")
+        )
+
+    except Exception:
+        return {}
 
 
 def block_to_dict(block):
-
     return {
         "index": block.index,
         "timestamp": block.timestamp,
@@ -24,144 +72,187 @@ def block_to_dict(block):
     }
 
 
-def create_transaction_id(
-    sender,
-    receiver,
-    amount
-):
+def all_transactions():
+    transactions = []
 
-    data = (
-        f"{sender}|"
-        f"{receiver}|"
-        f"{amount}|"
-        f"{time.time_ns()}"
-    )
+    for block in chain.chain:
 
-    return hashlib.sha256(
-        data.encode("utf-8")
-    ).hexdigest()
+        for transaction in block.transactions:
 
+            item = dict(transaction)
 
-def valid_address(address):
+            item["block"] = block.index
+            item["block_hash"] = block.hash
 
-    return (
-        isinstance(address, str)
-        and address.startswith("KHT")
-        and len(address) == 43
-    )
+            transactions.append(item)
+
+    return transactions
 
 
-def format_timestamp(timestamp):
+def find_transaction(transaction_id):
+    for transaction in all_transactions():
 
-    try:
+        if (
+            transaction.get(
+                "transaction_id"
+            )
+            == transaction_id
+        ):
+            return transaction
 
-        return time.strftime(
-            "%Y-%m-%d %H:%M:%S UTC",
-            time.gmtime(float(timestamp))
-        )
-
-    except Exception:
-
-        return "Unknown"
-
-
-def short_hash(value, length=18):
-
-    if not value:
-        return "N/A"
-
-    value = str(value)
-
-    if len(value) <= length:
-        return value
-
-    return (
-        value[:length // 2]
-        + "..."
-        + value[-length // 2:]
-    )
+    return None
 
 
 def explorer_page():
-
-    latest_block = blockchain.latest_block()
-
-    total_transactions = 0
-
-    for block in blockchain.chain:
-
-        total_transactions += len(
-            block.transactions
+    blocks = list(
+        reversed(
+            chain.chain
         )
+    )
 
-    recent_blocks = []
+    transactions = all_transactions()
 
-    for block in reversed(
-        blockchain.chain[-12:]
-    ):
+    recent_blocks = blocks[:12]
 
-        recent_blocks.append({
-            "index": block.index,
-            "timestamp": format_timestamp(
-                block.timestamp
-            ),
-            "transactions": len(
-                block.transactions
-            ),
-            "hash": block.hash,
-            "previous_hash": block.previous_hash
-        })
-
-    blocks_html = ""
+    block_rows = ""
 
     for block in recent_blocks:
 
-        blocks_html += f"""
-        <div class="block">
+        tx_count = len(
+            block.transactions
+        )
 
-            <div class="block-top">
+        block_rows += f"""
+        <div class="card">
+            <div class="row">
+                <div>
+                    <div class="title">
+                        Block #{html.escape(str(block.index))}
+                    </div>
+                    <div class="muted">
+                        {tx_count} transaction(s)
+                    </div>
+                </div>
 
-                <span class="block-number">
-                    Block #{html.escape(str(block["index"]))}
-                </span>
-
-                <span class="status">
+                <div class="badge">
                     CONFIRMED
-                </span>
-
-            </div>
-
-            <div class="block-row">
-                <span>Transactions</span>
-                <strong>
-                    {html.escape(str(block["transactions"]))}
-                </strong>
-            </div>
-
-            <div class="block-row">
-                <span>Time</span>
-                <strong>
-                    {html.escape(block["timestamp"])}
-                </strong>
+                </div>
             </div>
 
             <div class="hash">
-                <span>Hash</span>
-                <code>
-                    {html.escape(short_hash(block["hash"], 30))}
-                </code>
+                Hash:
+                {html.escape(block.hash)}
             </div>
 
+            <div class="hash">
+                Previous:
+                {html.escape(block.previous_hash)}
+            </div>
         </div>
         """
 
-    if not blocks_html:
+    transaction_rows = ""
 
-        blocks_html = """
+    for transaction in reversed(
+        transactions[-12:]
+    ):
+
+        transaction_id = str(
+            transaction.get(
+                "transaction_id",
+                ""
+            )
+        )
+
+        sender = str(
+            transaction.get(
+                "sender",
+                ""
+            )
+        )
+
+        receiver = str(
+            transaction.get(
+                "receiver",
+                ""
+            )
+        )
+
+        amount = transaction.get(
+            "amount",
+            0
+        )
+
+        block_number = transaction.get(
+            "block",
+            "-"
+        )
+
+        transaction_rows += f"""
+        <div class="card">
+            <div class="title">
+                {html.escape(transaction_id)}
+            </div>
+
+            <div class="txline">
+                <span>Amount</span>
+                <strong>
+                    {html.escape(str(amount))} KHT
+                </strong>
+            </div>
+
+            <div class="txline">
+                <span>From</span>
+                <span class="hash">
+                    {html.escape(sender)}
+                </span>
+            </div>
+
+            <div class="txline">
+                <span>To</span>
+                <span class="hash">
+                    {html.escape(receiver)}
+                </span>
+            </div>
+
+            <div class="txline">
+                <span>Block</span>
+                <span>
+                    #{html.escape(str(block_number))}
+                </span>
+            </div>
+        </div>
+        """
+
+    if not block_rows:
+        block_rows = """
         <div class="empty">
-            No blocks available yet.
+            No blocks yet.
         </div>
         """
+
+    if not transaction_rows:
+        transaction_rows = """
+        <div class="empty">
+            No transactions yet.
+        </div>
+        """
+
+    valid = chain.is_valid()
+
+    status_text = (
+        "VALID"
+        if valid
+        else "INVALID"
+    )
+
+    status_class = (
+        "good"
+        if valid
+        else "bad"
+    )
+
+    latest = chain.latest_block()
 
     page = f"""
 <!DOCTYPE html>
@@ -170,12 +261,11 @@ def explorer_page():
 
 <head>
 
-<meta charset="UTF-8">
-
 <meta name="viewport"
-      content="width=device-width, initial-scale=1.0">
+      content="width=device-width,
+               initial-scale=1">
 
-<title>Khotla Block Explorer</title>
+<title>Khotla Explorer</title>
 
 <style>
 
@@ -184,440 +274,198 @@ def explorer_page():
 }}
 
 body {{
-
     margin: 0;
-
+    background: #07100b;
+    color: #ffffff;
     font-family:
         Arial,
         Helvetica,
         sans-serif;
-
-    background:
-        #07110b;
-
-    color:
-        #ffffff;
 }}
 
 .header {{
-
-    padding:
-        24px 18px;
-
+    padding: 28px 18px 22px;
     background:
         linear-gradient(
-            135deg,
-            #0c2515,
-            #07110b
+            180deg,
+            #0d2115,
+            #07100b
         );
-
     border-bottom:
-        1px solid #173a22;
+        1px solid #183b23;
 }}
 
 .logo {{
-
-    font-size:
-        28px;
-
-    font-weight:
-        900;
-
-    letter-spacing:
-        1px;
+    font-size: 27px;
+    font-weight: bold;
 }}
 
 .logo span {{
-
-    color:
-        #39ff88;
+    color: #35e875;
 }}
 
 .subtitle {{
-
-    margin-top:
-        6px;
-
-    color:
-        #91a99a;
-
-    font-size:
-        14px;
-}}
-
-.online {{
-
-    display:
-        inline-block;
-
-    margin-top:
-        14px;
-
-    padding:
-        7px 12px;
-
-    border-radius:
-        20px;
-
-    background:
-        #123a20;
-
-    color:
-        #39ff88;
-
-    font-size:
-        12px;
-
-    font-weight:
-        800;
+    color: #91a999;
+    margin-top: 6px;
 }}
 
 .container {{
-
-    max-width:
-        1100px;
-
-    margin:
-        auto;
-
-    padding:
-        20px;
+    max-width: 900px;
+    margin: auto;
+    padding: 18px;
 }}
 
 .search {{
-
-    display:
-        flex;
-
-    gap:
-        10px;
-
-    margin-bottom:
-        22px;
-}}
-
-.search input {{
-
-    flex:
-        1;
-
-    min-width:
-        0;
-
-    padding:
-        14px;
-
+    width: 100%;
+    padding: 15px;
+    border-radius: 12px;
     border:
-        1px solid #244b30;
-
-    border-radius:
-        10px;
-
-    background:
-        #0d1d13;
-
-    color:
-        white;
-
-    outline:
-        none;
-
-    font-size:
-        14px;
-}}
-
-.search button {{
-
-    padding:
-        14px 18px;
-
-    border:
-        none;
-
-    border-radius:
-        10px;
-
-    background:
-        #39ff88;
-
-    color:
-        #06100a;
-
-    font-weight:
-        900;
-
-    cursor:
-        pointer;
+        1px solid #275c37;
+    background: #0d1b12;
+    color: white;
+    font-size: 16px;
+    margin-bottom: 18px;
 }}
 
 .stats {{
-
-    display:
-        grid;
-
+    display: grid;
     grid-template-columns:
-        repeat(
-            auto-fit,
-            minmax(
-                150px,
-                1fr
-            )
-        );
-
-    gap:
-        12px;
-
-    margin-bottom:
-        25px;
+        repeat(2, 1fr);
+    gap: 12px;
 }}
 
-.card {{
-
-    padding:
-        18px;
-
-    background:
-        #0d1d13;
-
+.stat {{
+    background: #0d1b12;
     border:
-        1px solid #173a22;
-
-    border-radius:
-        14px;
+        1px solid #183b23;
+    border-radius: 14px;
+    padding: 17px;
 }}
 
-.card-title {{
-
-    color:
-        #7f9988;
-
-    font-size:
-        12px;
-
-    text-transform:
-        uppercase;
-
-    letter-spacing:
-        1px;
+.stat-number {{
+    font-size: 25px;
+    font-weight: bold;
+    color: #35e875;
 }}
 
-.card-value {{
+.stat-label {{
+    margin-top: 5px;
+    color: #91a999;
+    font-size: 13px;
+}}
 
-    margin-top:
-        8px;
-
-    font-size:
-        22px;
-
-    font-weight:
-        900;
-
-    word-break:
-        break-word;
+.section {{
+    margin-top: 26px;
 }}
 
 .section-title {{
-
-    margin:
-        25px 0 12px;
-
-    font-size:
-        20px;
-
-    font-weight:
-        900;
+    font-size: 21px;
+    font-weight: bold;
+    margin-bottom: 12px;
 }}
 
-.block {{
-
-    margin-bottom:
-        12px;
-
-    padding:
-        17px;
-
-    background:
-        #0d1d13;
-
+.card {{
+    background: #0d1b12;
     border:
-        1px solid #173a22;
-
-    border-radius:
-        14px;
+        1px solid #183b23;
+    border-radius: 14px;
+    padding: 16px;
+    margin-bottom: 11px;
 }}
 
-.block-top {{
-
-    display:
-        flex;
-
+.row {{
+    display: flex;
     justify-content:
         space-between;
-
-    align-items:
-        center;
-
-    gap:
-        10px;
-
-    margin-bottom:
-        14px;
+    gap: 10px;
 }}
 
-.block-number {{
-
-    font-size:
-        17px;
-
-    font-weight:
-        900;
+.title {{
+    font-weight: bold;
+    word-break: break-all;
 }}
 
-.status {{
-
-    padding:
-        5px 9px;
-
-    border-radius:
-        20px;
-
-    background:
-        #123a20;
-
-    color:
-        #39ff88;
-
-    font-size:
-        10px;
-
-    font-weight:
-        900;
+.muted {{
+    color: #91a999;
+    margin-top: 5px;
+    font-size: 13px;
 }}
 
-.block-row {{
-
-    display:
-        flex;
-
-    justify-content:
-        space-between;
-
-    gap:
-        15px;
-
-    padding:
-        8px 0;
-
-    color:
-        #8fa697;
-
-    font-size:
-        13px;
-}}
-
-.block-row strong {{
-
-    color:
-        #ffffff;
-
-    text-align:
-        right;
+.badge {{
+    color: #07100b;
+    background: #35e875;
+    padding: 5px 8px;
+    border-radius: 7px;
+    font-size: 11px;
+    font-weight: bold;
+    height: fit-content;
 }}
 
 .hash {{
-
-    margin-top:
-        10px;
-
-    padding-top:
-        10px;
-
-    border-top:
-        1px solid #173a22;
-
+    color: #75c58f;
+    word-break: break-all;
+    font-size: 12px;
 }}
 
-.hash span {{
-
-    display:
-        block;
-
-    color:
-        #8fa697;
-
-    font-size:
-        12px;
-
-    margin-bottom:
-        6px;
+.txline {{
+    display: flex;
+    justify-content:
+        space-between;
+    gap: 15px;
+    margin-top: 10px;
+    color: #91a999;
 }}
 
-code {{
-
-    color:
-        #39ff88;
-
-    font-size:
-        12px;
-
-    word-break:
-        break-all;
+.txline strong {{
+    color: #35e875;
 }}
 
-.footer {{
+.network {{
+    margin-top: 16px;
+    padding: 13px;
+    border-radius: 12px;
+    background: #0d1b12;
+    border:
+        1px solid #183b23;
+}}
 
-    padding:
-        30px 20px;
+.dot {{
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #35e875;
+    margin-right: 7px;
+}}
 
-    text-align:
-        center;
+.good {{
+    color: #35e875;
+    font-weight: bold;
+}}
 
-    color:
-        #65786c;
-
-    font-size:
-        12px;
+.bad {{
+    color: #ff5f5f;
+    font-weight: bold;
 }}
 
 .empty {{
-
-    padding:
-        30px;
-
-    text-align:
-        center;
-
-    color:
-        #7f9988;
+    color: #91a999;
+    padding: 20px;
+    text-align: center;
 }}
 
-@media (max-width: 500px) {{
+.footer {{
+    text-align: center;
+    color: #617667;
+    padding: 35px 15px;
+    font-size: 13px;
+}}
 
-    .search {{
+@media (min-width: 700px) {{
 
-        flex-direction:
-            column;
-    }}
-
-    .search button {{
-
-        width:
-            100%;
-    }}
-
-    .block-row {{
-
-        flex-direction:
-            column;
-
-        gap:
-            3px;
-    }}
-
-    .block-row strong {{
-
-        text-align:
-            left;
+    .stats {{
+        grid-template-columns:
+            repeat(4, 1fr);
     }}
 
 }}
@@ -630,335 +478,184 @@ code {{
 
 <div class="header">
 
-    <div class="logo">
-        KHOTLA <span>EXPLORER</span>
-    </div>
+    <div class="container">
 
-    <div class="subtitle">
-        Khotla Coin Blockchain Explorer
-    </div>
+        <div class="logo">
+            KHOTLA <span>EXPLORER</span>
+        </div>
 
-    <div class="online">
-        ● TESTNET ONLINE
+        <div class="subtitle">
+            Public blockchain explorer
+        </div>
+
+        <div class="network">
+            <span class="dot"></span>
+            Khotla Testnet
+            —
+            <span class="good">
+                ONLINE
+            </span>
+        </div>
+
     </div>
 
 </div>
+
 
 <div class="container">
 
-    <div class="search">
+    <input
+        class="search"
+        placeholder=
+        "Search by transaction ID or address..."
+        onkeydown="
+        if(event.key === 'Enter')
+        {{
+            const value =
+                this.value.trim();
 
-        <input
-            id="searchInput"
-            type="text"
-            placeholder="Search transaction ID..."
-        >
+            if(value)
+            {{
+                window.location.href =
+                    '/transaction?id=' +
+                    encodeURIComponent(value);
+            }}
+        }}
+        "
+    >
 
-        <button onclick="searchTransaction()">
-            SEARCH
-        </button>
-
-    </div>
-
-    <div id="searchResult"></div>
 
     <div class="stats">
 
-        <div class="card">
-
-            <div class="card-title">
-                Network
+        <div class="stat">
+            <div class="stat-number">
+                {len(chain.chain)}
             </div>
-
-            <div class="card-value">
-                Testnet
+            <div class="stat-label">
+                BLOCKS
             </div>
+        </div>
 
+        <div class="stat">
+            <div class="stat-number">
+                {len(transactions)}
+            </div>
+            <div class="stat-label">
+                TRANSACTIONS
+            </div>
+        </div>
+
+        <div class="stat">
+            <div class="stat-number">
+                {len(chain.pending_transactions)}
+            </div>
+            <div class="stat-label">
+                PENDING
+            </div>
+        </div>
+
+        <div class="stat">
+            <div class="stat-number {status_class}">
+                {status_text}
+            </div>
+            <div class="stat-label">
+                CHAIN STATUS
+            </div>
+        </div>
+
+    </div>
+
+
+    <div class="section">
+
+        <div class="section-title">
+            Latest Block
         </div>
 
         <div class="card">
 
-            <div class="card-title">
-                Coin
+            <div class="row">
+
+                <div>
+                    <div class="title">
+                        Block #{latest.index}
+                    </div>
+
+                    <div class="muted">
+                        Latest Khotla Chain block
+                    </div>
+                </div>
+
+                <div class="badge">
+                    CONFIRMED
+                </div>
+
             </div>
 
-            <div class="card-value">
-                KHT
+            <div class="hash">
+                Hash:
+                {html.escape(latest.hash)}
             </div>
 
-        </div>
-
-        <div class="card">
-
-            <div class="card-title">
-                Blocks
-            </div>
-
-            <div class="card-value">
-                {len(blockchain.chain)}
-            </div>
-
-        </div>
-
-        <div class="card">
-
-            <div class="card-title">
-                Transactions
-            </div>
-
-            <div class="card-value">
-                {total_transactions}
-            </div>
-
-        </div>
-
-        <div class="card">
-
-            <div class="card-title">
-                Pending
-            </div>
-
-            <div class="card-value">
-                {len(blockchain.pending_transactions)}
-            </div>
-
-        </div>
-
-        <div class="card">
-
-            <div class="card-title">
-                Chain
-            </div>
-
-            <div class="card-value">
-                {"VALID" if blockchain.is_valid() else "INVALID"}
+            <div class="hash">
+                Previous:
+                {html.escape(latest.previous_hash)}
             </div>
 
         </div>
 
     </div>
 
-    <div class="section-title">
-        Latest Block
-    </div>
 
-    <div class="block">
+    <div class="section">
 
-        <div class="block-top">
-
-            <span class="block-number">
-                Block #{latest_block.index}
-            </span>
-
-            <span class="status">
-                CONFIRMED
-            </span>
-
+        <div class="section-title">
+            Recent Blocks
         </div>
 
-        <div class="block-row">
-            <span>Transactions</span>
-            <strong>
-                {len(latest_block.transactions)}
-            </strong>
-        </div>
-
-        <div class="block-row">
-            <span>Nonce</span>
-            <strong>
-                {latest_block.nonce}
-            </strong>
-        </div>
-
-        <div class="block-row">
-            <span>Time</span>
-            <strong>
-                {html.escape(
-                    format_timestamp(
-                        latest_block.timestamp
-                    )
-                )}
-            </strong>
-        </div>
-
-        <div class="hash">
-
-            <span>
-                Block Hash
-            </span>
-
-            <code>
-                {html.escape(latest_block.hash)}
-            </code>
-
-        </div>
+        {block_rows}
 
     </div>
 
-    <div class="section-title">
-        Recent Blocks
-    </div>
 
-    {blocks_html}
+    <div class="section">
+
+        <div class="section-title">
+            Recent Transactions
+        </div>
+
+        {transaction_rows}
+
+    </div>
 
 </div>
+
 
 <div class="footer">
 
-    Khotla Coin • KHT • Khotla Testnet
+    Khotla Coin (KHT)
+
+    <br>
+
+    Khotla Chain • Khotla Testnet
 
     <br><br>
 
-    Blockchain Explorer v1.0
+    Testnet only — not real money.
 
 </div>
-
-<script>
-
-async function searchTransaction() {{
-
-    const input =
-        document.getElementById(
-            "searchInput"
-        );
-
-    const result =
-        document.getElementById(
-            "searchResult"
-        );
-
-    const id =
-        input.value.trim();
-
-    if (!id) {{
-
-        result.innerHTML = "";
-
-        return;
-    }}
-
-    result.innerHTML =
-        '<div class="block">Searching...</div>';
-
-    try {{
-
-        const response =
-            await fetch(
-                "/transaction?id="
-                + encodeURIComponent(id)
-            );
-
-        const data =
-            await response.json();
-
-        if (!response.ok) {{
-
-            result.innerHTML =
-                '<div class="block">'
-                + '<strong>Transaction not found.</strong>'
-                + '</div>';
-
-            return;
-        }}
-
-        const transaction =
-            data.transaction;
-
-        result.innerHTML =
-            '<div class="block">'
-            + '<div class="block-top">'
-            + '<span class="block-number">'
-            + 'Transaction Found'
-            + '</span>'
-            + '<span class="status">'
-            + data.status.toUpperCase()
-            + '</span>'
-            + '</div>'
-            + '<div class="block-row">'
-            + '<span>Amount</span>'
-            + '<strong>'
-            + transaction.amount
-            + ' KHT'
-            + '</strong>'
-            + '</div>'
-            + '<div class="block-row">'
-            + '<span>Sender</span>'
-            + '<strong>'
-            + transaction.sender
-            + '</strong>'
-            + '</div>'
-            + '<div class="block-row">'
-            + '<span>Receiver</span>'
-            + '<strong>'
-            + transaction.receiver
-            + '</strong>'
-            + '</div>'
-            + '</div>';
-
-    }} catch (error) {{
-
-        result.innerHTML =
-            '<div class="block">'
-            + '<strong>Search error.</strong>'
-            + '</div>';
-
-    }}
-
-}}
-
-</script>
 
 </body>
 
 </html>
 """
 
-    return page
+    return page.encode("utf-8")
 
 
 class KhotlaAPI(BaseHTTPRequestHandler):
 
-    def send_json(
-        self,
-        data,
-        status=200
-    ):
-
-        response = json.dumps(
-            data,
-            indent=2
-        ).encode("utf-8")
-
-        self.send_response(status)
-
-        self.send_header(
-            "Content-Type",
-            "application/json"
-        )
-
-        self.send_header(
-            "Content-Length",
-            str(len(response))
-        )
-
-        self.send_header(
-            "Access-Control-Allow-Origin",
-            "*"
-        )
-
-        self.end_headers()
-
-        self.wfile.write(response)
-
-    def send_html(
-        self,
-        page,
-        status=200
-    ):
-
-        response = page.encode(
-            "utf-8"
-        )
+    def send_html(self, content, status=200):
 
         self.send_response(status)
 
@@ -969,7 +666,7 @@ class KhotlaAPI(BaseHTTPRequestHandler):
 
         self.send_header(
             "Content-Length",
-            str(len(response))
+            str(len(content))
         )
 
         self.send_header(
@@ -979,31 +676,12 @@ class KhotlaAPI(BaseHTTPRequestHandler):
 
         self.end_headers()
 
-        self.wfile.write(response)
+        self.wfile.write(content)
 
-    def read_json(self):
-
-        content_length = int(
-            self.headers.get(
-                "Content-Length",
-                0
-            )
-        )
-
-        if content_length == 0:
-            return {}
-
-        body = self.rfile.read(
-            content_length
-        )
-
-        return json.loads(
-            body.decode("utf-8")
-        )
 
     def do_OPTIONS(self):
 
-        self.send_response(200)
+        self.send_response(204)
 
         self.send_header(
             "Access-Control-Allow-Origin",
@@ -1022,6 +700,7 @@ class KhotlaAPI(BaseHTTPRequestHandler):
 
         self.end_headers()
 
+
     def do_GET(self):
 
         parsed = urlparse(
@@ -1030,18 +709,66 @@ class KhotlaAPI(BaseHTTPRequestHandler):
 
         path = parsed.path
 
+        query = parse_qs(
+            parsed.query
+        )
+
+
         if path == "/":
 
-            self.send_json({
-                "name": "Khotla Testnet API",
-                "coin": "Khotla Coin",
-                "ticker": "KHT",
-                "network": "Khotla Testnet",
-                "status": "online",
-                "version": "2.2"
-            })
+            json_response(
+                self,
+                {
+                    "name":
+                        "Khotla Testnet API",
+
+                    "coin":
+                        "Khotla Coin",
+
+                    "ticker":
+                        "KHT",
+
+                    "network":
+                        "Khotla Testnet",
+
+                    "status":
+                        "online",
+
+                    "version":
+                        "2.2"
+                }
+            )
 
             return
+
+
+        if path == "/status":
+
+            json_response(
+                self,
+                {
+                    "name":
+                        "Khotla Testnet API",
+
+                    "coin":
+                        "Khotla Coin",
+
+                    "ticker":
+                        "KHT",
+
+                    "network":
+                        "Khotla Testnet",
+
+                    "status":
+                        "online",
+
+                    "version":
+                        "2.2"
+                }
+            )
+
+            return
+
 
         if path == "/explorer":
 
@@ -1051,45 +778,30 @@ class KhotlaAPI(BaseHTTPRequestHandler):
 
             return
 
-        if path == "/status":
 
-            self.send_json({
+        if path == "/chain":
 
-                "network":
-                    "Khotla Testnet",
+            json_response(
+                self,
+                {
+                    "chain":
+                    [
+                        block_to_dict(block)
+                        for block in chain.chain
+                    ],
 
-                "coin":
-                    "Khotla Coin",
+                    "pending_transactions":
+                        chain.pending_transactions,
 
-                "ticker":
-                    "KHT",
-
-                "status":
-                    "online",
-
-                "blocks":
-                    len(blockchain.chain),
-
-                "pending_transactions":
-                    len(
-                        blockchain.pending_transactions
-                    ),
-
-                "latest_block":
-                    blockchain.latest_block().hash,
-
-                "chain_valid":
-                    blockchain.is_valid()
-
-            })
+                    "valid":
+                        chain.is_valid()
+                }
+            )
 
             return
 
-        if path == "/balance":
 
-            query = parse_qs(
-                parsed.query
-            )
+        if path == "/balance":
 
             address = query.get(
                 "address",
@@ -1098,83 +810,88 @@ class KhotlaAPI(BaseHTTPRequestHandler):
 
             if not address:
 
-                self.send_json({
-                    "error":
-                        "Address is required."
-                }, 400)
+                json_response(
+                    self,
+                    {
+                        "error":
+                            "Address is required."
+                    },
+                    400
+                )
 
                 return
 
-            if not valid_address(address):
-
-                self.send_json({
-                    "error":
-                        "Invalid KHT address."
-                }, 400)
-
-                return
-
-            balance = blockchain.get_balance(
+            balance = chain.get_balance(
                 address
             )
 
-            available_balance = (
-                blockchain.get_available_balance(
+            available = (
+                chain.get_available_balance(
                     address
                 )
             )
 
-            self.send_json({
+            json_response(
+                self,
+                {
+                    "address":
+                        address,
 
-                "address":
-                    address,
+                    "balance":
+                        balance,
 
-                "balance":
-                    balance,
+                    "available_balance":
+                        available,
 
-                "available_balance":
-                    available_balance,
-
-                "currency":
-                    "KHT",
-
-                "network":
-                    "Khotla Testnet"
-
-            })
+                    "ticker":
+                        "KHT"
+                }
+            )
 
             return
 
-        if path == "/chain":
 
-            chain_data = []
+        if path == "/history":
 
-            for block in blockchain.chain:
+            address = query.get(
+                "address",
+                [None]
+            )[0]
 
-                chain_data.append(
-                    block_to_dict(block)
-                )
+            transactions = all_transactions()
 
-            self.send_json({
+            if address:
 
-                "chain":
-                    chain_data,
+                transactions = [
+                    transaction
+                    for transaction in transactions
 
-                "length":
-                    len(chain_data),
+                    if (
+                        transaction.get("sender")
+                        == address
 
-                "valid":
-                    blockchain.is_valid()
+                        or
 
-            })
+                        transaction.get("receiver")
+                        == address
+                    )
+                ]
+
+            json_response(
+                self,
+                {
+                    "address":
+                        address,
+
+                    "transactions":
+                        transactions
+                }
+            )
 
             return
+
 
         if path == "/transaction":
-
-            query = parse_qs(
-                parsed.query
-            )
 
             transaction_id = query.get(
                 "id",
@@ -1183,185 +900,51 @@ class KhotlaAPI(BaseHTTPRequestHandler):
 
             if not transaction_id:
 
-                self.send_json({
-                    "error":
-                        "Transaction ID is required."
-                }, 400)
+                json_response(
+                    self,
+                    {
+                        "error":
+                            "Transaction ID is required."
+                    },
+                    400
+                )
 
                 return
 
-            for block in blockchain.chain:
-
-                for transaction in block.transactions:
-
-                    if (
-                        transaction.get(
-                            "transaction_id"
-                        )
-                        == transaction_id
-                    ):
-
-                        self.send_json({
-
-                            "transaction":
-                                transaction,
-
-                            "block":
-                                block.index,
-
-                            "block_hash":
-                                block.hash,
-
-                            "status":
-                                "confirmed"
-
-                        })
-
-                        return
-
-            for transaction in (
-                blockchain.pending_transactions
-            ):
-
-                if (
-                    transaction.get(
-                        "transaction_id"
-                    )
-                    == transaction_id
-                ):
-
-                    self.send_json({
-
-                        "transaction":
-                            transaction,
-
-                        "status":
-                            "pending"
-
-                    })
-
-                    return
-
-            self.send_json({
-                "error":
-                    "Transaction not found."
-            }, 404)
-
-            return
-
-        if path == "/history":
-
-            query = parse_qs(
-                parsed.query
+            transaction = find_transaction(
+                transaction_id
             )
 
-            address = query.get(
-                "address",
-                [None]
-            )[0]
+            if transaction is None:
 
-            if not address:
-
-                self.send_json({
-                    "error":
-                        "Address is required."
-                }, 400)
-
-                return
-
-            if not valid_address(address):
-
-                self.send_json({
-                    "error":
-                        "Invalid KHT address."
-                }, 400)
+                json_response(
+                    self,
+                    {
+                        "error":
+                            "Transaction not found."
+                    },
+                    404
+                )
 
                 return
 
-            transactions = []
-
-            for block in blockchain.chain:
-
-                for transaction in block.transactions:
-
-                    if (
-                        transaction.get(
-                            "sender"
-                        )
-                        == address
-                        or
-                        transaction.get(
-                            "receiver"
-                        )
-                        == address
-                    ):
-
-                        transactions.append({
-
-                            "transaction":
-                                transaction,
-
-                            "block":
-                                block.index,
-
-                            "block_hash":
-                                block.hash,
-
-                            "status":
-                                "confirmed"
-
-                        })
-
-            for transaction in (
-                blockchain.pending_transactions
-            ):
-
-                if (
-                    transaction.get(
-                        "sender"
-                    )
-                    == address
-                    or
-                    transaction.get(
-                        "receiver"
-                    )
-                    == address
-                ):
-
-                    transactions.append({
-
-                        "transaction":
-                            transaction,
-
-                        "status":
-                            "pending"
-
-                    })
-
-            self.send_json({
-
-                "address":
-                    address,
-
-                "transactions":
-                    transactions,
-
-                "count":
-                    len(transactions),
-
-                "network":
-                    "Khotla Testnet"
-
-            })
+            json_response(
+                self,
+                transaction
+            )
 
             return
 
-        self.send_json({
 
-            "error":
-                "Endpoint not found."
+        json_response(
+            self,
+            {
+                "error":
+                    "Endpoint not found."
+            },
+            404
+        )
 
-        }, 404)
 
     def do_POST(self):
 
@@ -1371,239 +954,130 @@ class KhotlaAPI(BaseHTTPRequestHandler):
 
         path = parsed.path
 
-        try:
+        data = read_json(
+            self
+        )
 
-            data = self.read_json()
-
-        except Exception:
-
-            self.send_json({
-                "error":
-                    "Invalid JSON."
-            }, 400)
-
-            return
 
         if path == "/transaction":
-
-            sender = data.get(
-                "sender"
-            )
-
-            receiver = data.get(
-                "receiver"
-            )
-
-            amount = data.get(
-                "amount"
-            )
-
-            signature = data.get(
-                "signature"
-            )
-
-            public_key = data.get(
-                "public_key"
-            )
-
-            if not sender or not receiver:
-
-                self.send_json({
-                    "error":
-                        "Sender and receiver are required."
-                }, 400)
-
-                return
-
-            if not valid_address(sender):
-
-                self.send_json({
-                    "error":
-                        "Invalid sender KHT address."
-                }, 400)
-
-                return
-
-            if not valid_address(receiver):
-
-                self.send_json({
-                    "error":
-                        "Invalid receiver KHT address."
-                }, 400)
-
-                return
-
-            try:
-
-                amount = float(amount)
-
-            except (
-                TypeError,
-                ValueError
-            ):
-
-                self.send_json({
-                    "error":
-                        "Amount must be a number."
-                }, 400)
-
-                return
-
-            if amount <= 0:
-
-                self.send_json({
-                    "error":
-                        "Amount must be greater than zero."
-                }, 400)
-
-                return
-
-            available_balance = (
-                blockchain.get_available_balance(
-                    sender
-                )
-            )
-
-            if amount > available_balance:
-
-                self.send_json({
-
-                    "error":
-                        "Insufficient KHT balance.",
-
-                    "balance":
-                        blockchain.get_balance(
-                            sender
-                        ),
-
-                    "available_balance":
-                        available_balance
-
-                }, 400)
-
-                return
-
-            transaction_id = (
-                data.get(
-                    "transaction_id"
-                )
-                or create_transaction_id(
-                    sender,
-                    receiver,
-                    amount
-                )
-            )
 
             try:
 
                 transaction = (
-                    blockchain.add_transaction(
+                    chain.add_transaction(
+                        sender=data.get(
+                            "sender"
+                        ),
 
-                        sender=sender,
+                        receiver=data.get(
+                            "receiver"
+                        ),
 
-                        receiver=receiver,
+                        amount=data.get(
+                            "amount"
+                        ),
 
-                        amount=amount,
+                        transaction_id=data.get(
+                            "transaction_id"
+                        ),
 
-                        transaction_id=
-                            transaction_id,
+                        signature=data.get(
+                            "signature"
+                        ),
 
-                        signature=signature,
+                        public_key=data.get(
+                            "public_key"
+                        ),
 
-                        public_key=public_key
+                        timestamp=data.get(
+                            "timestamp"
+                        )
                     )
                 )
 
-            except ValueError as error:
+                json_response(
+                    self,
+                    {
+                        "success":
+                            True,
 
-                self.send_json({
-                    "error":
-                        str(error)
-                }, 400)
+                        "message":
+                            "Transaction added.",
 
-                return
+                        "transaction":
+                            transaction
+                    }
+                )
 
-            self.send_json({
+            except Exception as error:
 
-                "message":
-                    "Transaction added.",
+                json_response(
+                    self,
+                    {
+                        "success":
+                            False,
 
-                "transaction_id":
-                    transaction[
-                        "transaction_id"
-                    ],
-
-                "sender":
-                    sender,
-
-                "receiver":
-                    receiver,
-
-                "amount":
-                    amount,
-
-                "currency":
-                    "KHT",
-
-                "signature":
-                    signature,
-
-                "public_key":
-                    public_key,
-
-                "status":
-                    "pending",
-
-                "network":
-                    "Khotla Testnet"
-
-            })
+                        "error":
+                            str(error)
+                    },
+                    400
+                )
 
             return
+
 
         if path == "/mine":
 
             try:
 
-                block = blockchain.mine()
+                block = chain.mine()
 
-            except ValueError as error:
+                if block is None:
 
-                self.send_json({
-                    "error":
-                        str(error)
-                }, 400)
+                    json_response(
+                        self,
+                        {
+                            "success":
+                                False,
 
-                return
+                            "error":
+                                "No pending transactions."
+                        },
+                        400
+                    )
 
-            if block is None:
+                    return
 
-                self.send_json({
+                json_response(
+                    self,
+                    {
+                        "success":
+                            True,
 
-                    "message":
-                        "No pending transactions.",
+                        "message":
+                            "Block mined.",
 
-                    "status":
-                        "nothing_to_mine"
+                        "block":
+                            block_to_dict(block)
+                    }
+                )
 
-                })
+            except Exception as error:
 
-                return
+                json_response(
+                    self,
+                    {
+                        "success":
+                            False,
 
-            self.send_json({
-
-                "message":
-                    "Block mined successfully.",
-
-                "block":
-                    block_to_dict(block),
-
-                "chain_valid":
-                    blockchain.is_valid()
-
-            })
+                        "error":
+                            str(error)
+                    },
+                    400
+                )
 
             return
+
 
         if path == "/faucet":
 
@@ -1611,167 +1085,128 @@ class KhotlaAPI(BaseHTTPRequestHandler):
                 "address"
             )
 
-            amount = data.get(
-                "amount",
-                100
-            )
-
             if not address:
 
-                self.send_json({
-                    "error":
-                        "Wallet address is required."
-                }, 400)
+                json_response(
+                    self,
+                    {
+                        "success":
+                            False,
+
+                        "error":
+                            "Address is required."
+                    },
+                    400
+                )
 
                 return
 
-            if not valid_address(address):
-
-                self.send_json({
-                    "error":
-                        "Invalid KHT wallet address."
-                }, 400)
-
-                return
+            amount = 100
 
             try:
 
-                amount = float(amount)
-
-            except (
-                TypeError,
-                ValueError
-            ):
-
-                self.send_json({
-                    "error":
-                        "Amount must be a number."
-                }, 400)
-
-                return
-
-            if amount <= 0:
-
-                self.send_json({
-                    "error":
-                        "Amount must be greater than zero."
-                }, 400)
-
-                return
-
-            transaction_id = (
-                create_transaction_id(
-                    "KHT_GENESIS",
-                    address,
-                    amount
-                )
-            )
-
-            try:
-
-                blockchain.add_transaction(
-
-                    sender="KHT_GENESIS",
-
-                    receiver=address,
-
-                    amount=amount,
-
-                    transaction_id=
-                        transaction_id,
-
-                    signature=None,
-
-                    public_key=None
-
+                transaction = (
+                    chain.add_transaction(
+                        sender="KHT_GENESIS",
+                        receiver=address,
+                        amount=amount
+                    )
                 )
 
-                block = blockchain.mine()
+                block = chain.mine()
 
-            except ValueError as error:
+                json_response(
+                    self,
+                    {
+                        "success":
+                            True,
 
-                self.send_json({
-                    "error":
-                        str(error)
-                }, 400)
+                        "message":
+                            "Faucet KHT sent.",
 
-                return
+                        "amount":
+                            amount,
 
-            self.send_json({
+                        "address":
+                            address,
 
-                "message":
-                    "Testnet KHT sent.",
+                        "transaction":
+                            transaction,
 
-                "transaction_id":
-                    transaction_id,
+                        "block":
+                            block_to_dict(block)
+                    }
+                )
 
-                "address":
-                    address,
+            except Exception as error:
 
-                "amount":
-                    amount,
+                json_response(
+                    self,
+                    {
+                        "success":
+                            False,
 
-                "currency":
-                    "KHT",
-
-                "block":
-                    block.index,
-
-                "block_hash":
-                    block.hash,
-
-                "network":
-                    "Khotla Testnet",
-
-                "status":
-                    "confirmed"
-
-            })
+                        "error":
+                            str(error)
+                    },
+                    400
+                )
 
             return
 
-        self.send_json({
 
-            "error":
-                "Endpoint not found."
-
-        }, 404)
-
-
-def run_server():
-
-    host = "0.0.0.0"
-
-    port = int(
-        os.environ.get(
-            "PORT",
-            "8080"
+        json_response(
+            self,
+            {
+                "error":
+                    "Endpoint not found."
+            },
+            404
         )
-    )
-
-    server = HTTPServer(
-        (host, port),
-        KhotlaAPI
-    )
-
-    print("================================")
-    print("       KHOTLA TESTNET API")
-    print("================================")
-    print()
-    print("Network: Khotla Testnet")
-    print("Coin: Khotla Coin")
-    print("Ticker: KHT")
-    print("Version: 2.2")
-    print()
-    print("Explorer: /explorer")
-    print()
-    print("API running on port:", port)
-    print()
-    print("Khotla Testnet API is running!")
-
-    server.serve_forever()
 
 
 if __name__ == "__main__":
 
-    run_server()
+    print(
+        "================================"
+    )
+
+    print(
+        "       KHOTLA TESTNET API"
+    )
+
+    print(
+        "================================"
+    )
+
+    print()
+
+    print(
+        "Khotla Coin (KHT)"
+    )
+
+    print(
+        "Network: Khotla Testnet"
+    )
+
+    print(
+        "Explorer: /explorer"
+    )
+
+    print(
+        "Port:",
+        PORT
+    )
+
+    print()
+
+    server = ThreadingHTTPServer(
+        (HOST, PORT),
+        KhotlaAPI
+    )
+
+    print(
+        "Khotla API is running."
+    )
+
+    server.serve_forever()
