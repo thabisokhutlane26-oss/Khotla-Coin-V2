@@ -11,31 +11,6 @@ from khotla_chain import KhotlaChain
 blockchain = KhotlaChain()
 
 
-def calculate_balance(address):
-    balance = 0.0
-
-    for block in blockchain.chain:
-        for transaction in block.transactions:
-
-            sender = transaction.get("sender")
-            receiver = transaction.get("receiver")
-
-            try:
-                amount = float(
-                    transaction.get("amount", 0)
-                )
-            except (TypeError, ValueError):
-                continue
-
-            if receiver == address:
-                balance += amount
-
-            if sender == address:
-                balance -= amount
-
-    return round(balance, 8)
-
-
 def block_to_dict(block):
 
     return {
@@ -155,6 +130,10 @@ class KhotlaAPI(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
 
+        # --------------------------------
+        # ROOT
+        # --------------------------------
+
         if path == "/":
 
             self.send_json({
@@ -167,6 +146,10 @@ class KhotlaAPI(BaseHTTPRequestHandler):
             })
 
             return
+
+        # --------------------------------
+        # STATUS
+        # --------------------------------
 
         if path == "/status":
 
@@ -190,6 +173,10 @@ class KhotlaAPI(BaseHTTPRequestHandler):
             })
 
             return
+
+        # --------------------------------
+        # BALANCE
+        # --------------------------------
 
         if path == "/balance":
 
@@ -218,16 +205,31 @@ class KhotlaAPI(BaseHTTPRequestHandler):
 
                 return
 
+            balance = blockchain.get_balance(
+                address
+            )
+
+            available_balance = (
+                blockchain.get_available_balance(
+                    address
+                )
+            )
+
             self.send_json({
                 "address": address,
-                "balance": calculate_balance(
-                    address
+                "balance": balance,
+                "available_balance": (
+                    available_balance
                 ),
                 "currency": "KHT",
                 "network": "Khotla Testnet"
             })
 
             return
+
+        # --------------------------------
+        # CHAIN
+        # --------------------------------
 
         if path == "/chain":
 
@@ -247,6 +249,10 @@ class KhotlaAPI(BaseHTTPRequestHandler):
 
             return
 
+        # --------------------------------
+        # TRANSACTION LOOKUP
+        # --------------------------------
+
         if path == "/transaction":
 
             query = parse_qs(
@@ -261,10 +267,15 @@ class KhotlaAPI(BaseHTTPRequestHandler):
             if not transaction_id:
 
                 self.send_json({
-                    "error": "Transaction ID is required."
+                    "error": (
+                        "Transaction ID "
+                        "is required."
+                    )
                 }, 400)
 
                 return
+
+            # Confirmed transaction
 
             for block in blockchain.chain:
 
@@ -278,13 +289,21 @@ class KhotlaAPI(BaseHTTPRequestHandler):
                     ):
 
                         self.send_json({
-                            "transaction": transaction,
-                            "block": block.index,
-                            "block_hash": block.hash,
+                            "transaction": (
+                                transaction
+                            ),
+                            "block": (
+                                block.index
+                            ),
+                            "block_hash": (
+                                block.hash
+                            ),
                             "status": "confirmed"
                         })
 
                         return
+
+            # Pending transaction
 
             for transaction in (
                 blockchain.pending_transactions
@@ -298,15 +317,111 @@ class KhotlaAPI(BaseHTTPRequestHandler):
                 ):
 
                     self.send_json({
-                        "transaction": transaction,
+                        "transaction": (
+                            transaction
+                        ),
                         "status": "pending"
                     })
 
                     return
 
             self.send_json({
-                "error": "Transaction not found."
+                "error": (
+                    "Transaction not found."
+                )
             }, 404)
+
+            return
+
+        # --------------------------------
+        # WALLET TRANSACTION HISTORY
+        # --------------------------------
+
+        if path == "/history":
+
+            query = parse_qs(
+                parsed.query
+            )
+
+            address = query.get(
+                "address",
+                [None]
+            )[0]
+
+            if not address:
+
+                self.send_json({
+                    "error": "Address is required."
+                }, 400)
+
+                return
+
+            if not valid_address(address):
+
+                self.send_json({
+                    "error": "Invalid KHT address."
+                }, 400)
+
+                return
+
+            transactions = []
+
+            # Confirmed transactions
+
+            for block in blockchain.chain:
+
+                for transaction in block.transactions:
+
+                    if (
+                        transaction.get(
+                            "sender"
+                        ) == address
+                        or transaction.get(
+                            "receiver"
+                        ) == address
+                    ):
+
+                        transactions.append({
+                            "transaction": (
+                                transaction
+                            ),
+                            "block": (
+                                block.index
+                            ),
+                            "block_hash": (
+                                block.hash
+                            ),
+                            "status": "confirmed"
+                        })
+
+            # Pending transactions
+
+            for transaction in (
+                blockchain.pending_transactions
+            ):
+
+                if (
+                    transaction.get(
+                        "sender"
+                    ) == address
+                    or transaction.get(
+                        "receiver"
+                    ) == address
+                ):
+
+                    transactions.append({
+                        "transaction": (
+                            transaction
+                        ),
+                        "status": "pending"
+                    })
+
+            self.send_json({
+                "address": address,
+                "transactions": transactions,
+                "count": len(transactions),
+                "network": "Khotla Testnet"
+            })
 
             return
 
@@ -331,11 +446,23 @@ class KhotlaAPI(BaseHTTPRequestHandler):
 
             return
 
+        # --------------------------------
+        # CREATE TRANSACTION
+        # --------------------------------
+
         if path == "/transaction":
 
-            sender = data.get("sender")
-            receiver = data.get("receiver")
-            amount = data.get("amount")
+            sender = data.get(
+                "sender"
+            )
+
+            receiver = data.get(
+                "receiver"
+            )
+
+            amount = data.get(
+                "amount"
+            )
 
             signature = data.get(
                 "signature"
@@ -404,24 +531,35 @@ class KhotlaAPI(BaseHTTPRequestHandler):
 
                 return
 
-            sender_balance = calculate_balance(
-                sender
+            available_balance = (
+                blockchain.get_available_balance(
+                    sender
+                )
             )
 
-            if amount > sender_balance:
+            if amount > available_balance:
 
                 self.send_json({
                     "error": (
                         "Insufficient "
                         "KHT balance."
                     ),
-                    "balance": sender_balance
+                    "balance": (
+                        blockchain.get_balance(
+                            sender
+                        )
+                    ),
+                    "available_balance": (
+                        available_balance
+                    )
                 }, 400)
 
                 return
 
             transaction_id = (
-                data.get("transaction_id")
+                data.get(
+                    "transaction_id"
+                )
                 or create_transaction_id(
                     sender,
                     receiver,
@@ -429,19 +567,33 @@ class KhotlaAPI(BaseHTTPRequestHandler):
                 )
             )
 
-            transaction = (
-                blockchain.add_transaction(
-                    sender,
-                    receiver,
-                    amount,
-                    transaction_id,
-                    signature,
-                    public_key
+            try:
+
+                transaction = (
+                    blockchain.add_transaction(
+                        sender=sender,
+                        receiver=receiver,
+                        amount=amount,
+                        transaction_id=(
+                            transaction_id
+                        ),
+                        signature=signature,
+                        public_key=public_key
+                    )
                 )
-            )
+
+            except ValueError as error:
+
+                self.send_json({
+                    "error": str(error)
+                }, 400)
+
+                return
 
             self.send_json({
-                "message": "Transaction added.",
+                "message": (
+                    "Transaction added."
+                ),
                 "transaction_id": (
                     transaction[
                         "transaction_id"
@@ -458,6 +610,10 @@ class KhotlaAPI(BaseHTTPRequestHandler):
             })
 
             return
+
+        # --------------------------------
+        # MINE
+        # --------------------------------
 
         if path == "/mine":
 
@@ -480,7 +636,9 @@ class KhotlaAPI(BaseHTTPRequestHandler):
                         "No pending "
                         "transactions."
                     ),
-                    "status": "nothing_to_mine"
+                    "status": (
+                        "nothing_to_mine"
+                    )
                 })
 
                 return
@@ -499,6 +657,10 @@ class KhotlaAPI(BaseHTTPRequestHandler):
             })
 
             return
+
+        # --------------------------------
+        # TESTNET FAUCET
+        # --------------------------------
 
         if path == "/faucet":
 
@@ -561,22 +723,34 @@ class KhotlaAPI(BaseHTTPRequestHandler):
 
             transaction_id = (
                 create_transaction_id(
-                    "KHT_FAUCET",
+                    "KHT_GENESIS",
                     address,
                     amount
                 )
             )
 
-            blockchain.add_transaction(
-                "KHT_GENESIS",
-                address,
-                amount,
-                transaction_id,
-                None,
-                None
-            )
+            try:
 
-            block = blockchain.mine()
+                blockchain.add_transaction(
+                    sender="KHT_GENESIS",
+                    receiver=address,
+                    amount=amount,
+                    transaction_id=(
+                        transaction_id
+                    ),
+                    signature=None,
+                    public_key=None
+                )
+
+                block = blockchain.mine()
+
+            except ValueError as error:
+
+                self.send_json({
+                    "error": str(error)
+                }, 400)
+
+                return
 
             self.send_json({
                 "message": (
