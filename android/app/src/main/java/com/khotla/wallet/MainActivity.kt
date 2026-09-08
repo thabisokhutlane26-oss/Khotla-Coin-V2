@@ -5,8 +5,8 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.os.Bundle
+import android.text.InputType
 import android.view.Gravity
-import android.view.View
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import java.net.HttpURLConnection
@@ -36,15 +36,24 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        prefs = getSharedPreferences("khotla_wallet", Context.MODE_PRIVATE)
+        prefs = getSharedPreferences(
+            "khotla_wallet",
+            Context.MODE_PRIVATE
+        )
 
-        wallet1Address = prefs.getString("wallet1_address", "") ?: ""
-        wallet2Address = prefs.getString("wallet2_address", "") ?: ""
+        wallet1Address =
+            prefs.getString("wallet1_address", "") ?: ""
 
-        wallet1Balance = prefs.getFloat("wallet1_balance", 0f).toDouble()
-        wallet2Balance = prefs.getFloat("wallet2_balance", 0f).toDouble()
+        wallet2Address =
+            prefs.getString("wallet2_address", "") ?: ""
 
-        if (prefs.getString("wallet_pin", "")!!.isEmpty()) {
+        wallet1Balance =
+            prefs.getFloat("wallet1_balance", 0f).toDouble()
+
+        wallet2Balance =
+            prefs.getFloat("wallet2_balance", 0f).toDouble()
+
+        if (prefs.getString("wallet_pin", "").isNullOrEmpty()) {
             showCreatePin()
         } else {
             showEnterPin()
@@ -52,47 +61,124 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ============================================================
-    // PIN SETUP
+    // CREATE PIN
     // ============================================================
 
     private fun showCreatePin() {
 
         val input = EditText(this)
-        input.inputType = 2
+
+        input.inputType =
+            InputType.TYPE_CLASS_NUMBER or
+                    InputType.TYPE_NUMBER_VARIATION_PASSWORD
+
         input.hint = "Enter 4-digit PIN"
         input.gravity = Gravity.CENTER
         input.textSize = 20f
 
-        val container = LinearLayout(this)
-        container.orientation = LinearLayout.VERTICAL
-        container.setPadding(50, 20, 50, 10)
-        container.addView(input)
+        val layout = LinearLayout(this)
 
-        AlertDialog.Builder(this)
+        layout.orientation = LinearLayout.VERTICAL
+        layout.setPadding(50, 20, 50, 10)
+        layout.addView(input)
+
+        val dialog = AlertDialog.Builder(this)
             .setTitle("Create Khotla PIN")
-            .setMessage("Create a 4-digit PIN to protect your wallet.")
-            .setView(container)
+            .setMessage(
+                "Create a 4-digit PIN to protect your wallet."
+            )
+            .setView(layout)
             .setCancelable(false)
             .setPositiveButton("SAVE PIN", null)
-            .show()
-            .also { dialog ->
+            .create()
 
-                dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+        dialog.setOnShowListener {
 
-                    val pin = input.text.toString()
+            dialog.getButton(
+                AlertDialog.BUTTON_POSITIVE
+            ).setOnClickListener {
 
-                    if (pin.length != 4 || !pin.all { it.isDigit() }) {
-                        Toast.makeText(
-                            this,
-                            "PIN must be exactly 4 digits.",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                        return@setOnClickListener
-                    }
+                val pin =
+                    input.text.toString()
 
-                    prefs.edit()
-                        .putString("wallet_pin", pin)
-                        .apply()
+                if (!isValidPin(pin)) {
+
+                    Toast.makeText(
+                        this,
+                        "PIN must be exactly 4 digits.",
+                        Toast.LENGTH_SHORT
+                    ).show()
+
+                    return@setOnClickListener
+                }
+
+                prefs.edit()
+                    .putString("wallet_pin", pin)
+                    .apply()
+
+                dialog.dismiss()
+
+                initializeWallet()
+
+                Toast.makeText(
+                    this,
+                    "PIN created successfully!",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+
+        dialog.show()
+    }
+
+    // ============================================================
+    // ENTER PIN
+    // ============================================================
+
+    private fun showEnterPin() {
+
+        val input = EditText(this)
+
+        input.inputType =
+            InputType.TYPE_CLASS_NUMBER or
+                    InputType.TYPE_NUMBER_VARIATION_PASSWORD
+
+        input.hint = "Enter PIN"
+        input.gravity = Gravity.CENTER
+        input.textSize = 20f
+
+        val layout = LinearLayout(this)
+
+        layout.orientation = LinearLayout.VERTICAL
+        layout.setPadding(50, 20, 50, 10)
+        layout.addView(input)
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Khotla Wallet")
+            .setMessage(
+                "Enter your 4-digit PIN to unlock your wallet."
+            )
+            .setView(layout)
+            .setCancelable(false)
+            .setPositiveButton("UNLOCK", null)
+            .create()
+
+        dialog.setOnShowListener {
+
+            dialog.getButton(
+                AlertDialog.BUTTON_POSITIVE
+            ).setOnClickListener {
+
+                val enteredPin =
+                    input.text.toString()
+
+                val savedPin =
+                    prefs.getString(
+                        "wallet_pin",
+                        ""
+                    )
+
+                if (enteredPin == savedPin) {
 
                     dialog.dismiss()
 
@@ -100,79 +186,165 @@ class MainActivity : AppCompatActivity() {
 
                     Toast.makeText(
                         this,
-                        "PIN created successfully!",
+                        "Wallet unlocked!",
+                        Toast.LENGTH_SHORT
+                    ).show()
+
+                } else {
+
+                    Toast.makeText(
+                        this,
+                        "Incorrect PIN.",
                         Toast.LENGTH_SHORT
                     ).show()
                 }
             }
+        }
+
+        dialog.show()
     }
 
     // ============================================================
-    // PIN LOGIN
+    // CHANGE PIN
     // ============================================================
 
-    private fun showEnterPin() {
+    private fun showChangePin() {
 
-        val input = EditText(this)
-        input.inputType = 2
-        input.hint = "Enter PIN"
-        input.gravity = Gravity.CENTER
-        input.textSize = 20f
+        val layout = LinearLayout(this)
 
-        val container = LinearLayout(this)
-        container.orientation = LinearLayout.VERTICAL
-        container.setPadding(50, 20, 50, 10)
-        container.addView(input)
+        layout.orientation = LinearLayout.VERTICAL
+        layout.setPadding(40, 10, 40, 10)
 
-        AlertDialog.Builder(this)
-            .setTitle("Khotla Wallet")
-            .setMessage("Enter your 4-digit PIN to unlock your wallet.")
-            .setView(container)
-            .setCancelable(false)
-            .setPositiveButton("UNLOCK", null)
-            .show()
-            .also { dialog ->
+        val oldPin = EditText(this)
 
-                dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+        oldPin.hint = "Current PIN"
+        oldPin.inputType =
+            InputType.TYPE_CLASS_NUMBER or
+                    InputType.TYPE_NUMBER_VARIATION_PASSWORD
 
-                    val enteredPin = input.text.toString()
-                    val savedPin = prefs.getString("wallet_pin", "")
+        layout.addView(oldPin)
 
-                    if (enteredPin == savedPin) {
+        val newPin = EditText(this)
 
-                        dialog.dismiss()
+        newPin.hint = "New 4-digit PIN"
+        newPin.inputType =
+            InputType.TYPE_CLASS_NUMBER or
+                    InputType.TYPE_NUMBER_VARIATION_PASSWORD
 
-                        initializeWallet()
+        layout.addView(newPin)
 
-                        Toast.makeText(
-                            this,
-                            "Wallet unlocked!",
-                            Toast.LENGTH_SHORT
-                        ).show()
+        val confirmPin = EditText(this)
 
-                    } else {
+        confirmPin.hint = "Confirm new PIN"
+        confirmPin.inputType =
+            InputType.TYPE_CLASS_NUMBER or
+                    InputType.TYPE_NUMBER_VARIATION_PASSWORD
 
-                        Toast.makeText(
-                            this,
-                            "Incorrect PIN.",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
+        layout.addView(confirmPin)
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Change PIN")
+            .setView(layout)
+            .setNegativeButton("CANCEL", null)
+            .setPositiveButton("CHANGE PIN", null)
+            .create()
+
+        dialog.setOnShowListener {
+
+            dialog.getButton(
+                AlertDialog.BUTTON_POSITIVE
+            ).setOnClickListener {
+
+                val current =
+                    oldPin.text.toString()
+
+                val newValue =
+                    newPin.text.toString()
+
+                val confirmation =
+                    confirmPin.text.toString()
+
+                val saved =
+                    prefs.getString(
+                        "wallet_pin",
+                        ""
+                    )
+
+                if (current != saved) {
+
+                    Toast.makeText(
+                        this,
+                        "Current PIN is incorrect.",
+                        Toast.LENGTH_SHORT
+                    ).show()
+
+                    return@setOnClickListener
                 }
+
+                if (!isValidPin(newValue)) {
+
+                    Toast.makeText(
+                        this,
+                        "New PIN must be exactly 4 digits.",
+                        Toast.LENGTH_SHORT
+                    ).show()
+
+                    return@setOnClickListener
+                }
+
+                if (newValue != confirmation) {
+
+                    Toast.makeText(
+                        this,
+                        "New PINs do not match.",
+                        Toast.LENGTH_SHORT
+                    ).show()
+
+                    return@setOnClickListener
+                }
+
+                prefs.edit()
+                    .putString(
+                        "wallet_pin",
+                        newValue
+                    )
+                    .apply()
+
+                dialog.dismiss()
+
+                Toast.makeText(
+                    this,
+                    "PIN changed successfully!",
+                    Toast.LENGTH_SHORT
+                ).show()
             }
+        }
+
+        dialog.show()
+    }
+
+    private fun isValidPin(pin: String): Boolean {
+
+        return pin.length == 4 &&
+                pin.all { it.isDigit() }
     }
 
     // ============================================================
-    // INITIALIZE WALLET
+    // INITIALIZE
     // ============================================================
 
     private fun initializeWallet() {
 
         if (wallet1Address.isEmpty()) {
-            wallet1Address = createNewAddress()
+
+            wallet1Address =
+                createNewAddress()
 
             prefs.edit()
-                .putString("wallet1_address", wallet1Address)
+                .putString(
+                    "wallet1_address",
+                    wallet1Address
+                )
                 .apply()
         }
 
@@ -189,24 +361,41 @@ class MainActivity : AppCompatActivity() {
 
     private fun createScreenLayout() {
 
-        val scrollView = ScrollView(this)
+        val scrollView =
+            ScrollView(this)
 
-        val mainLayout = LinearLayout(this)
-        mainLayout.orientation = LinearLayout.VERTICAL
-        mainLayout.setPadding(30, 30, 30, 40)
+        val mainLayout =
+            LinearLayout(this)
 
-        val title = TextView(this)
+        mainLayout.orientation =
+            LinearLayout.VERTICAL
+
+        mainLayout.setPadding(
+            30,
+            30,
+            30,
+            40
+        )
+
+        val title =
+            TextView(this)
+
         title.text = "KHOTLA"
         title.textSize = 32f
         title.gravity = Gravity.CENTER
-        title.setTypeface(null, android.graphics.Typeface.BOLD)
+        title.setTypeface(
+            null,
+            android.graphics.Typeface.BOLD
+        )
 
         mainLayout.addView(
             title,
             marginParams(0, 0, 0, 0)
         )
 
-        val subtitle = TextView(this)
+        val subtitle =
+            TextView(this)
+
         subtitle.text = "WALLET"
         subtitle.textSize = 18f
         subtitle.gravity = Gravity.CENTER
@@ -216,7 +405,9 @@ class MainActivity : AppCompatActivity() {
             marginParams(0, 0, 0, 15)
         )
 
-        val network = TextView(this)
+        val network =
+            TextView(this)
+
         network.text = "● KHOTLA TESTNET"
         network.textSize = 14f
         network.gravity = Gravity.CENTER
@@ -226,157 +417,133 @@ class MainActivity : AppCompatActivity() {
             marginParams(0, 0, 0, 25)
         )
 
-        walletNumberText = TextView(this)
+        walletNumberText =
+            TextView(this)
+
         walletNumberText.textSize = 18f
         walletNumberText.gravity = Gravity.CENTER
-        walletNumberText.setTypeface(null, android.graphics.Typeface.BOLD)
+        walletNumberText.setTypeface(
+            null,
+            android.graphics.Typeface.BOLD
+        )
 
         mainLayout.addView(
             walletNumberText,
             marginParams(0, 0, 0, 10)
         )
 
-        balanceText = TextView(this)
+        balanceText =
+            TextView(this)
+
         balanceText.textSize = 36f
         balanceText.gravity = Gravity.CENTER
-        balanceText.setTypeface(null, android.graphics.Typeface.BOLD)
+        balanceText.setTypeface(
+            null,
+            android.graphics.Typeface.BOLD
+        )
 
         mainLayout.addView(
             balanceText,
             marginParams(0, 0, 0, 20)
         )
 
-        addressText = TextView(this)
+        addressText =
+            TextView(this)
+
         addressText.textSize = 12f
         addressText.gravity = Gravity.CENTER
-        addressText.setPadding(15, 15, 15, 15)
+        addressText.setPadding(
+            15,
+            15,
+            15,
+            15
+        )
 
         mainLayout.addView(
             addressText,
             marginParams(0, 0, 0, 10)
         )
 
-        val copyButton = Button(this)
-        copyButton.text = "COPY WALLET ADDRESS"
-
-        copyButton.setOnClickListener {
+        addButton(
+            mainLayout,
+            "COPY WALLET ADDRESS"
+        ) {
             copyAddress()
         }
 
-        mainLayout.addView(
-            copyButton,
-            buttonParams()
-        )
-
-        val sendButton = Button(this)
-        sendButton.text = "SEND KHT"
-
-        sendButton.setOnClickListener {
+        addButton(
+            mainLayout,
+            "SEND KHT"
+        ) {
             showSendDialog()
         }
 
-        mainLayout.addView(
-            sendButton,
-            buttonParams()
-        )
-
-        val receiveButton = Button(this)
-        receiveButton.text = "RECEIVE KHT"
-
-        receiveButton.setOnClickListener {
+        addButton(
+            mainLayout,
+            "RECEIVE KHT"
+        ) {
             showReceiveDialog()
         }
 
-        mainLayout.addView(
-            receiveButton,
-            buttonParams()
-        )
-
-        val historyButton = Button(this)
-        historyButton.text = "TRANSACTION HISTORY"
-
-        historyButton.setOnClickListener {
+        addButton(
+            mainLayout,
+            "TRANSACTION HISTORY"
+        ) {
             showTransactionHistory()
         }
 
-        mainLayout.addView(
-            historyButton,
-            buttonParams()
-        )
-
-        val faucetButton = Button(this)
-        faucetButton.text = "GET 100 TESTNET KHT"
-
-        faucetButton.setOnClickListener {
+        addButton(
+            mainLayout,
+            "GET 100 TESTNET KHT"
+        ) {
             requestFaucet()
         }
 
-        mainLayout.addView(
-            faucetButton,
-            buttonParams()
-        )
-
-        val refreshButton = Button(this)
-        refreshButton.text = "REFRESH BALANCE"
-
-        refreshButton.setOnClickListener {
+        addButton(
+            mainLayout,
+            "REFRESH BALANCE"
+        ) {
             refreshBalance()
         }
 
-        mainLayout.addView(
-            refreshButton,
-            buttonParams()
-        )
-
-        val wallet1Button = Button(this)
-        wallet1Button.text = "CREATE WALLET 1"
-
-        wallet1Button.setOnClickListener {
+        addButton(
+            mainLayout,
+            "CREATE WALLET 1"
+        ) {
             createWallet1()
         }
 
-        mainLayout.addView(
-            wallet1Button,
-            buttonParams()
-        )
-
-        val wallet2Button = Button(this)
-        wallet2Button.text = "CREATE WALLET 2"
-
-        wallet2Button.setOnClickListener {
+        addButton(
+            mainLayout,
+            "CREATE WALLET 2"
+        ) {
             createWallet2()
         }
 
-        mainLayout.addView(
-            wallet2Button,
-            buttonParams()
-        )
-
-        val switchButton = Button(this)
-        switchButton.text = "SWITCH WALLET"
-
-        switchButton.setOnClickListener {
+        addButton(
+            mainLayout,
+            "SWITCH WALLET"
+        ) {
             switchWallet()
         }
 
-        mainLayout.addView(
-            switchButton,
-            buttonParams()
-        )
+        addButton(
+            mainLayout,
+            "CHANGE PIN"
+        ) {
+            showChangePin()
+        }
 
-        val lockButton = Button(this)
-        lockButton.text = "LOCK WALLET"
-
-        lockButton.setOnClickListener {
+        addButton(
+            mainLayout,
+            "LOCK WALLET"
+        ) {
             lockWallet()
         }
 
-        mainLayout.addView(
-            lockButton,
-            buttonParams()
-        )
+        statusText =
+            TextView(this)
 
-        statusText = TextView(this)
         statusText.text = "Ready"
         statusText.textSize = 14f
         statusText.gravity = Gravity.CENTER
@@ -386,32 +553,53 @@ class MainActivity : AppCompatActivity() {
             marginParams(0, 20, 0, 0)
         )
 
-        scrollView.addView(mainLayout)
+        scrollView.addView(
+            mainLayout
+        )
 
         setContentView(scrollView)
 
         updateDashboard()
     }
 
+    private fun addButton(
+        layout: LinearLayout,
+        text: String,
+        action: () -> Unit
+    ) {
+
+        val button =
+            Button(this)
+
+        button.text = text
+        button.setOnClickListener {
+            action()
+        }
+
+        layout.addView(
+            button,
+            buttonParams()
+        )
+    }
+
     // ============================================================
-    // WALLET ADDRESS
+    // WALLET
     // ============================================================
 
     private fun createNewAddress(): String {
 
-        val random = UUID.randomUUID()
-            .toString()
-            .replace("-", "")
+        val random =
+            UUID.randomUUID()
+                .toString()
+                .replace("-", "")
 
-        return "KHT" + random + UUID.randomUUID()
-            .toString()
-            .replace("-", "")
-            .substring(0, 7)
+        return "KHT" +
+                random +
+                UUID.randomUUID()
+                    .toString()
+                    .replace("-", "")
+                    .substring(0, 7)
     }
-
-    // ============================================================
-    // CREATE WALLET 1
-    // ============================================================
 
     private fun createWallet1() {
 
@@ -426,10 +614,14 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        wallet1Address = createNewAddress()
+        wallet1Address =
+            createNewAddress()
 
         prefs.edit()
-            .putString("wallet1_address", wallet1Address)
+            .putString(
+                "wallet1_address",
+                wallet1Address
+            )
             .apply()
 
         selectedWallet = 1
@@ -442,10 +634,6 @@ class MainActivity : AppCompatActivity() {
             Toast.LENGTH_SHORT
         ).show()
     }
-
-    // ============================================================
-    // CREATE WALLET 2
-    // ============================================================
 
     private fun createWallet2() {
 
@@ -460,10 +648,14 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        wallet2Address = createNewAddress()
+        wallet2Address =
+            createNewAddress()
 
         prefs.edit()
-            .putString("wallet2_address", wallet2Address)
+            .putString(
+                "wallet2_address",
+                wallet2Address
+            )
             .apply()
 
         selectedWallet = 2
@@ -476,10 +668,6 @@ class MainActivity : AppCompatActivity() {
             Toast.LENGTH_SHORT
         ).show()
     }
-
-    // ============================================================
-    // SWITCH WALLET
-    // ============================================================
 
     private fun switchWallet() {
 
@@ -501,10 +689,6 @@ class MainActivity : AppCompatActivity() {
         refreshBalance()
     }
 
-    // ============================================================
-    // CURRENT ADDRESS
-    // ============================================================
-
     private fun currentAddress(): String {
 
         return if (selectedWallet == 1) {
@@ -514,10 +698,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // ============================================================
-    // CURRENT BALANCE
-    // ============================================================
-
     private fun currentBalance(): Double {
 
         return if (selectedWallet == 1) {
@@ -526,10 +706,6 @@ class MainActivity : AppCompatActivity() {
             wallet2Balance
         }
     }
-
-    // ============================================================
-    // UPDATE DASHBOARD
-    // ============================================================
 
     private fun updateDashboard() {
 
@@ -549,10 +725,6 @@ class MainActivity : AppCompatActivity() {
         addressText.text =
             currentAddress()
     }
-
-    // ============================================================
-    // COPY ADDRESS
-    // ============================================================
 
     private fun copyAddress() {
 
@@ -576,12 +748,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ============================================================
-    // REFRESH BALANCE
+    // BALANCE
     // ============================================================
 
     private fun refreshBalance() {
 
-        val address = currentAddress()
+        val address =
+            currentAddress()
 
         if (address.isEmpty()) {
             return
@@ -594,9 +767,10 @@ class MainActivity : AppCompatActivity() {
 
             try {
 
-                val url = URL(
-                    "$apiBase/balance?address=$address"
-                )
+                val url =
+                    URL(
+                        "$apiBase/balance?address=$address"
+                    )
 
                 val connection =
                     url.openConnection()
@@ -612,17 +786,23 @@ class MainActivity : AppCompatActivity() {
                         .readText()
 
                 val balance =
-                    Regex("\"balance\"\\s*:\\s*([0-9.]+)")
+                    Regex(
+                        "\"balance\"\\s*:\\s*([0-9.]+)"
+                    )
                         .find(response)
                         ?.groupValues
                         ?.get(1)
                         ?.toDoubleOrNull()
                         ?: 0.0
 
+                connection.disconnect()
+
                 runOnUiThread {
 
                     if (selectedWallet == 1) {
-                        wallet1Balance = balance
+
+                        wallet1Balance =
+                            balance
 
                         prefs.edit()
                             .putFloat(
@@ -633,7 +813,8 @@ class MainActivity : AppCompatActivity() {
 
                     } else {
 
-                        wallet2Balance = balance
+                        wallet2Balance =
+                            balance
 
                         prefs.edit()
                             .putFloat(
@@ -648,8 +829,6 @@ class MainActivity : AppCompatActivity() {
                     statusText.text =
                         "Balance updated."
                 }
-
-                connection.disconnect()
 
             } catch (e: Exception) {
 
@@ -668,11 +847,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun requestFaucet() {
 
-        val address = currentAddress()
-
-        if (address.isEmpty()) {
-            return
-        }
+        val address =
+            currentAddress()
 
         statusText.text =
             "Requesting 100 testnet KHT..."
@@ -690,6 +866,7 @@ class MainActivity : AppCompatActivity() {
 
                 connection.requestMethod = "POST"
                 connection.doOutput = true
+
                 connection.setRequestProperty(
                     "Content-Type",
                     "application/json"
@@ -699,13 +876,19 @@ class MainActivity : AppCompatActivity() {
                     """{"address":"$address","amount":100}"""
 
                 connection.outputStream.use {
-                    it.write(body.toByteArray())
+                    it.write(
+                        body.toByteArray()
+                    )
                 }
 
-                val response =
-                    connection.inputStream
-                        .bufferedReader()
-                        .readText()
+                val responseCode =
+                    connection.responseCode
+
+                if (responseCode !in 200..299) {
+                    throw Exception("Faucet request failed.")
+                }
+
+                connection.disconnect()
 
                 runOnUiThread {
 
@@ -723,8 +906,6 @@ class MainActivity : AppCompatActivity() {
                     refreshBalance()
                 }
 
-                connection.disconnect()
-
             } catch (e: Exception) {
 
                 runOnUiThread {
@@ -737,98 +918,130 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ============================================================
-    // SEND DIALOG
+    // SEND
     // ============================================================
 
     private fun showSendDialog() {
 
-        val layout = LinearLayout(this)
-        layout.orientation = LinearLayout.VERTICAL
-        layout.setPadding(40, 10, 40, 10)
+        val layout =
+            LinearLayout(this)
 
-        val receiverInput = EditText(this)
-        receiverInput.hint = "Receiver KHT address"
+        layout.orientation =
+            LinearLayout.VERTICAL
 
-        layout.addView(receiverInput)
+        layout.setPadding(
+            40,
+            10,
+            40,
+            10
+        )
 
-        val amountInput = EditText(this)
-        amountInput.hint = "Amount"
-        amountInput.inputType = 2
+        val receiverInput =
+            EditText(this)
 
-        layout.addView(amountInput)
+        receiverInput.hint =
+            "Receiver KHT address"
 
-        AlertDialog.Builder(this)
-            .setTitle("Send KHT")
-            .setView(layout)
-            .setNegativeButton("CANCEL", null)
-            .setPositiveButton("SEND", null)
-            .show()
-            .also { dialog ->
+        layout.addView(
+            receiverInput
+        )
 
-                dialog.getButton(
-                    AlertDialog.BUTTON_POSITIVE
-                ).setOnClickListener {
+        val amountInput =
+            EditText(this)
 
-                    val receiver =
-                        receiverInput.text.toString().trim()
+        amountInput.hint =
+            "Amount"
 
-                    val amount =
-                        amountInput.text.toString()
-                            .toDoubleOrNull()
+        amountInput.inputType =
+            InputType.TYPE_CLASS_NUMBER or
+                    InputType.TYPE_NUMBER_FLAG_DECIMAL
 
-                    if (!receiver.startsWith("KHT")) {
+        layout.addView(
+            amountInput
+        )
 
-                        Toast.makeText(
-                            this,
-                            "Invalid KHT receiver address.",
-                            Toast.LENGTH_SHORT
-                        ).show()
+        val dialog =
+            AlertDialog.Builder(this)
+                .setTitle("Send KHT")
+                .setView(layout)
+                .setNegativeButton(
+                    "CANCEL",
+                    null
+                )
+                .setPositiveButton(
+                    "SEND",
+                    null
+                )
+                .create()
 
-                        return@setOnClickListener
-                    }
+        dialog.setOnShowListener {
 
-                    if (amount == null || amount <= 0) {
+            dialog.getButton(
+                AlertDialog.BUTTON_POSITIVE
+            ).setOnClickListener {
 
-                        Toast.makeText(
-                            this,
-                            "Enter a valid amount.",
-                            Toast.LENGTH_SHORT
-                        ).show()
+                val receiver =
+                    receiverInput.text
+                        .toString()
+                        .trim()
 
-                        return@setOnClickListener
-                    }
+                val amount =
+                    amountInput.text
+                        .toString()
+                        .toDoubleOrNull()
 
-                    if (amount > currentBalance()) {
+                if (!receiver.startsWith("KHT")) {
 
-                        Toast.makeText(
-                            this,
-                            "Insufficient KHT balance.",
-                            Toast.LENGTH_SHORT
-                        ).show()
+                    Toast.makeText(
+                        this,
+                        "Invalid KHT receiver address.",
+                        Toast.LENGTH_SHORT
+                    ).show()
 
-                        return@setOnClickListener
-                    }
-
-                    dialog.dismiss()
-
-                    sendKht(
-                        receiver,
-                        amount
-                    )
+                    return@setOnClickListener
                 }
-            }
-    }
 
-    // ============================================================
-    // SEND KHT
-    // ============================================================
+                if (amount == null || amount <= 0) {
+
+                    Toast.makeText(
+                        this,
+                        "Enter a valid amount.",
+                        Toast.LENGTH_SHORT
+                    ).show()
+
+                    return@setOnClickListener
+                }
+
+                if (amount > currentBalance()) {
+
+                    Toast.makeText(
+                        this,
+                        "Insufficient KHT balance.",
+                        Toast.LENGTH_SHORT
+                    ).show()
+
+                    return@setOnClickListener
+                }
+
+                dialog.dismiss()
+
+                sendKht(
+                    receiver,
+                    amount
+                )
+            }
+        }
+
+        dialog.show()
+    }
 
     private fun sendKht(
         receiver: String,
         amount: Double
     ) {
 
-        val sender = currentAddress()
+        val sender =
+            currentAddress()
 
         statusText.text =
             "Sending KHT..."
@@ -856,14 +1069,12 @@ class MainActivity : AppCompatActivity() {
                     """{"sender":"$sender","receiver":"$receiver","amount":$amount}"""
 
                 connection.outputStream.use {
-                    it.write(body.toByteArray())
+                    it.write(
+                        body.toByteArray()
+                    )
                 }
 
-                val responseCode =
-                    connection.responseCode
-
-                if (responseCode !in 200..299) {
-
+                if (connection.responseCode !in 200..299) {
                     throw Exception(
                         "Transaction rejected."
                     )
@@ -878,7 +1089,9 @@ class MainActivity : AppCompatActivity() {
                     mineUrl.openConnection()
                             as HttpURLConnection
 
-                mineConnection.requestMethod = "POST"
+                mineConnection.requestMethod =
+                    "POST"
+
                 mineConnection.doOutput = true
 
                 mineConnection.setRequestProperty(
@@ -887,7 +1100,9 @@ class MainActivity : AppCompatActivity() {
                 )
 
                 mineConnection.outputStream.use {
-                    it.write("{}".toByteArray())
+                    it.write(
+                        "{}".toByteArray()
+                    )
                 }
 
                 val mineResponse =
@@ -896,7 +1111,9 @@ class MainActivity : AppCompatActivity() {
                         .readText()
 
                 val block =
-                    Regex("\"index\"\\s*:\\s*(\\d+)")
+                    Regex(
+                        "\"index\"\\s*:\\s*(\\d+)"
+                    )
                         .find(mineResponse)
                         ?.groupValues
                         ?.get(1)
@@ -944,15 +1161,20 @@ class MainActivity : AppCompatActivity() {
                 "Give this address to the person sending you KHT:\n\n" +
                         currentAddress()
             )
-            .setPositiveButton("COPY ADDRESS") { _, _ ->
+            .setPositiveButton(
+                "COPY ADDRESS"
+            ) { _, _ ->
                 copyAddress()
             }
-            .setNegativeButton("CLOSE", null)
+            .setNegativeButton(
+                "CLOSE",
+                null
+            )
             .show()
     }
 
     // ============================================================
-    // TRANSACTION HISTORY
+    // HISTORY
     // ============================================================
 
     private fun addHistory(
@@ -965,13 +1187,18 @@ class MainActivity : AppCompatActivity() {
     ) {
 
         val oldHistory =
-            prefs.getString("transaction_history", "") ?: ""
+            prefs.getString(
+                "transaction_history",
+                ""
+            ) ?: ""
 
         val time =
             java.text.SimpleDateFormat(
                 "yyyy-MM-dd HH:mm:ss",
                 java.util.Locale.getDefault()
-            ).format(java.util.Date())
+            ).format(
+                java.util.Date()
+            )
 
         val entry =
             "$type|$amount|$from|$to|$status|$block|$time"
@@ -999,11 +1226,22 @@ class MainActivity : AppCompatActivity() {
                 ""
             ) ?: ""
 
-        val layout = LinearLayout(this)
-        layout.orientation = LinearLayout.VERTICAL
-        layout.setPadding(30, 20, 30, 20)
+        val layout =
+            LinearLayout(this)
 
-        val text = TextView(this)
+        layout.orientation =
+            LinearLayout.VERTICAL
+
+        layout.setPadding(
+            30,
+            20,
+            30,
+            20
+        )
+
+        val text =
+            TextView(this)
+
         text.textSize = 13f
 
         if (history.isEmpty()) {
@@ -1013,48 +1251,47 @@ class MainActivity : AppCompatActivity() {
 
         } else {
 
-            val entries =
-                history.split("\n")
-
             val builder =
                 StringBuilder()
 
-            entries.forEachIndexed { index, entry ->
+            history
+                .split("\n")
+                .forEach { entry ->
 
-                val parts =
-                    entry.split("|")
+                    val parts =
+                        entry.split("|")
 
-                if (parts.size >= 7) {
+                    if (parts.size >= 7) {
 
-                    builder.append(
-                        "━━━━━━━━━━━━━━━━━━\n"
-                    )
+                        builder.append(
+                            "━━━━━━━━━━━━━━━━━━\n"
+                        )
 
-                    builder.append(
-                        "${parts[0]}  ${parts[1]} KHT\n"
-                    )
+                        builder.append(
+                            "${parts[0]}  ${parts[1]} KHT\n"
+                        )
 
-                    builder.append(
-                        "From: ${parts[2]}\n"
-                    )
+                        builder.append(
+                            "From: ${parts[2]}\n"
+                        )
 
-                    builder.append(
-                        "To: ${parts[3]}\n"
-                    )
+                        builder.append(
+                            "To: ${parts[3]}\n"
+                        )
 
-                    builder.append(
-                        "Status: ${parts[4]}\n"
-                    )
+                        builder.append(
+                            "Status: ${parts[4]}\n"
+                        )
 
-                    builder.append(
-                        "Block: ${parts[5]}\n"
-                    )
+                        builder.append(
+                            "Block: ${parts[5]}\n"
+                        )
 
-                    builder.append(
-                        "Time: ${parts[6]}\n"
-                    )
+                        builder.append(
+                            "Time: ${parts[6]}\n"
+                        )
+                    }
                 }
-            }
 
             builder.append(
                 "━━━━━━━━━━━━━━━━━━"
@@ -1069,11 +1306,18 @@ class MainActivity : AppCompatActivity() {
         AlertDialog.Builder(this)
             .setTitle("Transaction History")
             .setView(layout)
-            .setPositiveButton("CLOSE", null)
-            .setNeutralButton("CLEAR LOCAL HISTORY") { _, _ ->
+            .setPositiveButton(
+                "CLOSE",
+                null
+            )
+            .setNeutralButton(
+                "CLEAR LOCAL HISTORY"
+            ) { _, _ ->
 
                 prefs.edit()
-                    .remove("transaction_history")
+                    .remove(
+                        "transaction_history"
+                    )
                     .apply()
 
                 Toast.makeText(
@@ -1086,7 +1330,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ============================================================
-    // LOCK WALLET
+    // LOCK
     // ============================================================
 
     private fun lockWallet() {
@@ -1101,10 +1345,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ============================================================
-    // UI HELPERS
+    // UI
     // ============================================================
 
-    private fun buttonParams(): LinearLayout.LayoutParams {
+    private fun buttonParams():
+            LinearLayout.LayoutParams {
 
         return LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
