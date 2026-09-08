@@ -1,7 +1,12 @@
+import base64
 import hashlib
 import json
 import time
 import uuid
+
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+    Ed25519PublicKey
+)
 
 
 class KhotlaTransaction:
@@ -85,19 +90,45 @@ class KhotlaTransaction:
         if not self.public_key:
             return False
 
-        expected_address_hash = hashlib.sha256(
-            self.public_key.encode("utf-8")
-        ).hexdigest()
+        try:
 
-        expected_address = (
-            "KHT"
-            + expected_address_hash[:40]
-        )
+            public_key_bytes = bytes.fromhex(
+                self.public_key
+            )
 
-        if expected_address != self.sender:
+            if len(public_key_bytes) != 32:
+                return False
+
+            expected_address = (
+                "KHT"
+                + hashlib.sha256(
+                    public_key_bytes
+                ).hexdigest()[:40]
+            )
+
+            if expected_address != self.sender:
+                return False
+
+            signature_bytes = base64.b64decode(
+                self.signature
+            )
+
+            public_key = (
+                Ed25519PublicKey.from_public_bytes(
+                    public_key_bytes
+                )
+            )
+
+            public_key.verify(
+                signature_bytes,
+                self.transaction_hash().encode("utf-8")
+            )
+
+            return True
+
+        except Exception:
+
             return False
-
-        return True
 
     def is_valid(self):
 
@@ -113,52 +144,13 @@ class KhotlaTransaction:
         if not self.transaction_id:
             return False
 
-        if self.sender == "KHT_GENESIS":
-            return True
-
         return self.verify_signature()
 
 
 if __name__ == "__main__":
 
-    transaction = KhotlaTransaction(
-        "KHT_GENESIS",
-        "THABISO_WALLET",
-        1000
-    )
-
     print("================================")
     print("     KHOTLA TRANSACTION")
     print("================================")
     print()
-
-    print(
-        "Transaction ID:",
-        transaction.transaction_id
-    )
-
-    print(
-        "Sender:",
-        transaction.sender
-    )
-
-    print(
-        "Receiver:",
-        transaction.receiver
-    )
-
-    print(
-        "Amount:",
-        transaction.amount,
-        "KHT"
-    )
-
-    print(
-        "Transaction Hash:",
-        transaction.transaction_hash()
-    )
-
-    print(
-        "Valid:",
-        transaction.is_valid()
-    )
+    print("Transaction module loaded.")
