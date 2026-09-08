@@ -63,17 +63,11 @@ def test_transaction_creation():
     transaction.public_key = wallet1.public_key
 
     assert transaction.amount == 100
-
     assert transaction.sender == wallet1.address
-
     assert transaction.receiver == wallet2.address
-
     assert transaction.transaction_id
-
-    assert len(
-        transaction.transaction_hash()
-    ) == 64
-
+    assert transaction.timestamp is not None
+    assert len(transaction.transaction_hash()) == 64
     assert transaction.is_valid()
 
 
@@ -137,12 +131,13 @@ def test_blockchain_mining():
         transaction.public_key = sender.public_key
 
         blockchain.add_transaction(
-            sender.address,
-            receiver.address,
-            100,
-            transaction.transaction_id,
-            transaction.signature,
-            transaction.public_key
+            sender=sender.address,
+            receiver=receiver.address,
+            amount=transaction.amount,
+            transaction_id=transaction.transaction_id,
+            signature=transaction.signature,
+            public_key=transaction.public_key,
+            timestamp=transaction.timestamp
         )
 
         block = blockchain.mine()
@@ -150,10 +145,7 @@ def test_blockchain_mining():
         assert block is not None
         assert block.index == 1
         assert blockchain.is_valid()
-
-        assert os.path.exists(
-            chain_file
-        )
+        assert os.path.exists(chain_file)
 
 
 def test_blockchain_persistence():
@@ -186,27 +178,72 @@ def test_blockchain_persistence():
         transaction.public_key = sender.public_key
 
         blockchain1.add_transaction(
-            sender.address,
-            receiver.address,
-            50,
-            transaction.transaction_id,
-            transaction.signature,
-            transaction.public_key
+            sender=sender.address,
+            receiver=receiver.address,
+            amount=transaction.amount,
+            transaction_id=transaction.transaction_id,
+            signature=transaction.signature,
+            public_key=transaction.public_key,
+            timestamp=transaction.timestamp
         )
 
-        blockchain1.mine()
+        block = blockchain1.mine()
+
+        assert block is not None
+        assert blockchain1.is_valid()
 
         blockchain2 = KhotlaChain(
             storage_file=chain_file
         )
 
-        assert len(
-            blockchain2.chain
-        ) == len(
+        assert len(blockchain2.chain) == len(
             blockchain1.chain
         )
 
         assert blockchain2.is_valid()
+
+
+def test_tampered_transaction_fails():
+
+    sender = KhotlaWallet()
+    receiver = KhotlaWallet()
+
+    blockchain = KhotlaChain(
+        storage_file=os.path.join(
+            tempfile.gettempdir(),
+            "khotla_tamper_test.json"
+        )
+    )
+
+    transaction = KhotlaTransaction(
+        sender.address,
+        receiver.address,
+        100
+    )
+
+    signature = sender.sign_message(
+        transaction.transaction_hash()
+    )
+
+    transaction.signature = signature
+    transaction.public_key = sender.public_key
+
+    blockchain.add_transaction(
+        sender=sender.address,
+        receiver=receiver.address,
+        amount=transaction.amount,
+        transaction_id=transaction.transaction_id,
+        signature=transaction.signature,
+        public_key=transaction.public_key,
+        timestamp=transaction.timestamp
+    )
+
+    # Tamper with the amount after signing.
+    blockchain.pending_transactions[0]["amount"] = 999
+
+    assert not blockchain.validate_transaction(
+        blockchain.pending_transactions[0]
+    )
 
 
 if __name__ == "__main__":
@@ -225,6 +262,9 @@ if __name__ == "__main__":
 
     test_blockchain_persistence()
 
+    test_tampered_transaction_fails()
+
+    print()
     print("================================")
     print("   KHOTLA STEP 10B TESTS PASSED")
     print("================================")
