@@ -50,12 +50,13 @@ def main():
         )
 
     blockchain.add_transaction(
-        sender_wallet.address,
-        receiver_wallet.address,
-        transaction.amount,
-        transaction.transaction_id,
-        transaction.signature,
-        transaction.public_key
+        sender=sender_wallet.address,
+        receiver=receiver_wallet.address,
+        amount=transaction.amount,
+        transaction_id=transaction.transaction_id,
+        signature=transaction.signature,
+        public_key=transaction.public_key,
+        timestamp=transaction.timestamp
     )
 
     print("Transaction signed.")
@@ -81,4 +82,5 @@ def main():
 
 
 if __name__ == "__main__":
+
     main()
