@@ -104,7 +104,9 @@ class KhotlaChain:
         sender,
         receiver,
         amount,
-        transaction_id=None
+        transaction_id=None,
+        signature=None,
+        public_key=None
     ):
 
         if not sender:
@@ -117,24 +119,38 @@ class KhotlaChain:
                 "Receiver is required."
             )
 
-        amount = float(amount)
+        try:
+            amount = float(amount)
+        except (TypeError, ValueError):
+
+            raise ValueError(
+                "Amount must be a number."
+            )
 
         if amount <= 0:
             raise ValueError(
                 "Amount must be greater than zero."
             )
 
+        if not transaction_id:
+
+            transaction_id = hashlib.sha256(
+                (
+                    f"{sender}"
+                    f"{receiver}"
+                    f"{amount}"
+                    f"{time.time_ns()}"
+                ).encode("utf-8")
+            ).hexdigest()
+
         transaction = {
-            "transaction_id": (
-                transaction_id
-                or hashlib.sha256(
-                    f"{sender}{receiver}{amount}{time.time()}".encode()
-                ).hexdigest()
-            ),
+            "transaction_id": transaction_id,
             "sender": sender,
             "receiver": receiver,
             "amount": amount,
-            "timestamp": time.time()
+            "timestamp": time.time(),
+            "signature": signature,
+            "public_key": public_key
         }
 
         self.pending_transactions.append(
@@ -143,10 +159,74 @@ class KhotlaChain:
 
         return transaction
 
+    def validate_transaction(self, transaction):
+
+        sender = transaction.get("sender")
+        receiver = transaction.get("receiver")
+        amount = transaction.get("amount")
+        transaction_id = transaction.get(
+            "transaction_id"
+        )
+
+        if not sender:
+            return False
+
+        if not receiver:
+            return False
+
+        if not transaction_id:
+            return False
+
+        try:
+            amount = float(amount)
+        except (TypeError, ValueError):
+            return False
+
+        if amount <= 0:
+            return False
+
+        if sender == "KHT_GENESIS":
+            return True
+
+        signature = transaction.get(
+            "signature"
+        )
+
+        public_key = transaction.get(
+            "public_key"
+        )
+
+        if not signature:
+            return False
+
+        if not public_key:
+            return False
+
+        expected_address = (
+            "KHT"
+            + hashlib.sha256(
+                public_key.encode("utf-8")
+            ).hexdigest()[:40]
+        )
+
+        if expected_address != sender:
+            return False
+
+        return True
+
     def mine(self):
 
         if not self.pending_transactions:
             return None
+
+        for transaction in self.pending_transactions:
+
+            if not self.validate_transaction(
+                transaction
+            ):
+                raise ValueError(
+                    "Invalid transaction."
+                )
 
         block = Block(
             len(self.chain),
@@ -179,7 +259,6 @@ class KhotlaChain:
         ):
 
             current = self.chain[i]
-
             previous = self.chain[i - 1]
 
             if (
@@ -198,6 +277,13 @@ class KhotlaChain:
                 "0" * self.difficulty
             ):
                 return False
+
+            for transaction in current.transactions:
+
+                if not self.validate_transaction(
+                    transaction
+                ):
+                    return False
 
         return True
 
