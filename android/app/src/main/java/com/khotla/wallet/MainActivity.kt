@@ -4,9 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.os.Bundle
-import android.widget.LinearLayout
-import android.widget.TextView
-import android.widget.Toast
+import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import java.net.HttpURLConnection
 import java.net.URL
@@ -23,106 +21,177 @@ class MainActivity : AppCompatActivity() {
 
         private const val KEY_ADDRESS =
             "wallet_address"
+
+        private const val KEY_BALANCE =
+            "wallet_balance"
+
+        private const val KEY_HISTORY =
+            "wallet_history"
     }
 
-    private lateinit var root: LinearLayout
-    private lateinit var statusText: TextView
+    private lateinit var balanceText: TextView
     private lateinit var addressText: TextView
+    private lateinit var statusText: TextView
+    private lateinit var historyText: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        buildScreen()
+        buildDashboard()
+        loadWallet()
         checkConnection()
     }
 
-    private fun buildScreen() {
+    private fun buildDashboard() {
 
-        root = LinearLayout(this)
+        val scroll = ScrollView(this)
 
+        val root = LinearLayout(this)
         root.orientation = LinearLayout.VERTICAL
-        root.setPadding(40, 50, 40, 40)
+        root.setPadding(35, 40, 35, 40)
 
         val title = TextView(this)
         title.text = "KHOTLA WALLET"
-        title.textSize = 28f
+        title.textSize = 30f
 
         val subtitle = TextView(this)
-        subtitle.text = "Khotla Coin (KHT)"
+        subtitle.text = "Khotla Coin • KHT"
         subtitle.textSize = 18f
 
         val network = TextView(this)
-        network.text = "\nNetwork\nKhotla Testnet"
+        network.text = "\n🌐 Network\nKhotla Testnet"
         network.textSize = 17f
 
         statusText = TextView(this)
-        statusText.text = "\nConnection\nChecking..."
+        statusText.text = "\n🔄 Connection\nChecking..."
         statusText.textSize = 17f
 
-        val balance = TextView(this)
-        balance.text = "\nBalance\n0 KHT"
-        balance.textSize = 22f
+        balanceText = TextView(this)
+        balanceText.text = "\n💰 Balance\n0 KHT"
+        balanceText.textSize = 25f
 
         addressText = TextView(this)
-        addressText.text = "\nWallet\nNo wallet created"
-        addressText.textSize = 15f
+        addressText.text = "\n👛 Wallet\nNo wallet created"
+        addressText.textSize = 14f
 
-        val createButton = android.widget.Button(this)
+        val createButton = Button(this)
         createButton.text = "CREATE WALLET"
 
         createButton.setOnClickListener {
             createWallet()
         }
 
-        val copyButton = android.widget.Button(this)
-        copyButton.text = "COPY ADDRESS"
+        val faucetButton = Button(this)
+        faucetButton.text = "🚰 GET 100 KHT"
+
+        faucetButton.setOnClickListener {
+            faucet()
+        }
+
+        val sendButton = Button(this)
+        sendButton.text = "📤 SEND KHT"
+
+        sendButton.setOnClickListener {
+            sendKht()
+        }
+
+        val receiveButton = Button(this)
+        receiveButton.text = "📥 RECEIVE KHT"
+
+        receiveButton.setOnClickListener {
+            receive()
+        }
+
+        val copyButton = Button(this)
+        copyButton.text = "📋 COPY ADDRESS"
 
         copyButton.setOnClickListener {
             copyAddress()
         }
 
-        val refreshButton = android.widget.Button(this)
-        refreshButton.text = "REFRESH CONNECTION"
+        val refreshButton = Button(this)
+        refreshButton.text = "🔄 REFRESH"
 
         refreshButton.setOnClickListener {
+            loadWallet()
             checkConnection()
         }
+
+        val historyTitle = TextView(this)
+        historyTitle.text = "\n📜 TRANSACTION HISTORY"
+        historyTitle.textSize = 20f
+
+        historyText = TextView(this)
+        historyText.text = "No transactions yet."
+        historyText.textSize = 15f
 
         root.addView(title)
         root.addView(subtitle)
         root.addView(network)
         root.addView(statusText)
-        root.addView(balance)
+        root.addView(balanceText)
         root.addView(addressText)
 
         root.addView(createButton)
+        root.addView(faucetButton)
+        root.addView(sendButton)
+        root.addView(receiveButton)
         root.addView(copyButton)
         root.addView(refreshButton)
 
-        setContentView(root)
+        root.addView(historyTitle)
+        root.addView(historyText)
 
-        loadWallet()
+        scroll.addView(root)
+
+        setContentView(scroll)
     }
 
     private fun loadWallet() {
 
-        val prefs = getSharedPreferences(
-            PREFS,
-            Context.MODE_PRIVATE
-        )
+        val prefs =
+            getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-        val address = prefs.getString(
-            KEY_ADDRESS,
-            ""
-        ) ?: ""
+        val address =
+            prefs.getString(KEY_ADDRESS, "") ?: ""
 
-        if (address.isNotEmpty()) {
-            addressText.text =
-                "\nWallet\n$address"
-        }
+        val balance =
+            prefs.getFloat(KEY_BALANCE, 0f)
+
+        addressText.text =
+            if (address.isEmpty()) {
+                "\n👛 Wallet\nNo wallet created"
+            } else {
+                "\n👛 Wallet\n$address"
+            }
+
+        balanceText.text =
+            "\n💰 Balance\n$balance KHT"
+
+        historyText.text =
+            prefs.getString(
+                KEY_HISTORY,
+                "No transactions yet."
+            )
+                ?: "No transactions yet."
     }
 
     private fun createWallet() {
+
+        val existing =
+            getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(KEY_ADDRESS, "")
+
+        if (!existing.isNullOrEmpty()) {
+
+            Toast.makeText(
+                this,
+                "Wallet already exists",
+                Toast.LENGTH_SHORT
+            ).show()
+
+            return
+        }
 
         val address =
             "KHT" +
@@ -132,37 +201,203 @@ class MainActivity : AppCompatActivity() {
                         .uppercase()
                         .take(40)
 
-        getSharedPreferences(
-            PREFS,
-            Context.MODE_PRIVATE
-        )
+        getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit()
             .putString(KEY_ADDRESS, address)
+            .putFloat(KEY_BALANCE, 0f)
             .apply()
 
-        addressText.text =
-            "\nWallet\n$address"
+        loadWallet()
 
         copyAddress()
 
         Toast.makeText(
             this,
-            "Wallet created successfully 🔐",
+            "Wallet created 🔐",
             Toast.LENGTH_LONG
         ).show()
     }
 
-    private fun copyAddress() {
+    private fun faucet() {
 
-        val prefs = getSharedPreferences(
-            PREFS,
-            Context.MODE_PRIVATE
+        val prefs =
+            getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+        val address =
+            prefs.getString(KEY_ADDRESS, "") ?: ""
+
+        if (address.isEmpty()) {
+
+            Toast.makeText(
+                this,
+                "Create a wallet first",
+                Toast.LENGTH_SHORT
+            ).show()
+
+            return
+        }
+
+        val oldBalance =
+            prefs.getFloat(KEY_BALANCE, 0f)
+
+        val newBalance =
+            oldBalance + 100f
+
+        prefs.edit()
+            .putFloat(KEY_BALANCE, newBalance)
+            .apply()
+
+        addHistory(
+            "🚰 Faucet +100 KHT"
         )
 
-        val address = prefs.getString(
-            KEY_ADDRESS,
-            ""
-        ) ?: ""
+        loadWallet()
+
+        Toast.makeText(
+            this,
+            "100 KHT added",
+            Toast.LENGTH_LONG
+        ).show()
+    }
+
+    private fun sendKht() {
+
+        val prefs =
+            getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+        val balance =
+            prefs.getFloat(KEY_BALANCE, 0f)
+
+        if (balance <= 0f) {
+
+            Toast.makeText(
+                this,
+                "Insufficient KHT",
+                Toast.LENGTH_SHORT
+            ).show()
+
+            return
+        }
+
+        val input = EditText(this)
+
+        input.hint = "Recipient address"
+
+        AlertDialogBuilder(
+            "Send KHT",
+            input,
+            "NEXT"
+        ) {
+
+            val recipient =
+                input.text.toString().trim()
+
+            if (recipient.isEmpty()) {
+
+                Toast.makeText(
+                    this,
+                    "Enter recipient address",
+                    Toast.LENGTH_SHORT
+                ).show()
+
+                return@AlertDialogBuilder
+            }
+
+            val amountInput = EditText(this)
+
+            amountInput.hint = "Amount KHT"
+            amountInput.inputType =
+                android.text.InputType.TYPE_CLASS_NUMBER or
+                        android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+
+            AlertDialogBuilder(
+                "Send Amount",
+                amountInput,
+                "SEND"
+            ) {
+
+                val amount =
+                    amountInput.text.toString()
+                        .toFloatOrNull()
+
+                if (amount == null || amount <= 0f) {
+
+                    Toast.makeText(
+                        this,
+                        "Invalid amount",
+                        Toast.LENGTH_SHORT
+                    ).show()
+
+                    return@AlertDialogBuilder
+                }
+
+                if (amount > balance) {
+
+                    Toast.makeText(
+                        this,
+                        "Insufficient balance",
+                        Toast.LENGTH_SHORT
+                    ).show()
+
+                    return@AlertDialogBuilder
+                }
+
+                prefs.edit()
+                    .putFloat(
+                        KEY_BALANCE,
+                        balance - amount
+                    )
+                    .apply()
+
+                addHistory(
+                    "📤 Sent $amount KHT to $recipient"
+                )
+
+                loadWallet()
+
+                Toast.makeText(
+                    this,
+                    "Transaction recorded",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
+
+    private fun receive() {
+
+        val address =
+            getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(KEY_ADDRESS, "") ?: ""
+
+        if (address.isEmpty()) {
+
+            Toast.makeText(
+                this,
+                "Create a wallet first",
+                Toast.LENGTH_SHORT
+            ).show()
+
+            return
+        }
+
+        android.app.AlertDialog.Builder(this)
+            .setTitle("📥 Receive KHT")
+            .setMessage(
+                "Send KHT to this wallet address:\n\n$address"
+            )
+            .setPositiveButton("COPY") { _, _ ->
+                copyAddress()
+            }
+            .setNegativeButton("CLOSE", null)
+            .show()
+    }
+
+    private fun copyAddress() {
+
+        val address =
+            getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(KEY_ADDRESS, "") ?: ""
 
         if (address.isEmpty()) {
 
@@ -182,7 +417,7 @@ class MainActivity : AppCompatActivity() {
 
         clipboard.setPrimaryClip(
             ClipData.newPlainText(
-                "Khotla Wallet Address",
+                "Khotla Address",
                 address
             )
         )
@@ -194,10 +429,33 @@ class MainActivity : AppCompatActivity() {
         ).show()
     }
 
+    private fun addHistory(transaction: String) {
+
+        val prefs =
+            getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+        val old =
+            prefs.getString(
+                KEY_HISTORY,
+                ""
+            ) ?: ""
+
+        val updated =
+            if (old.isEmpty()) {
+                transaction
+            } else {
+                "$transaction\n$old"
+            }
+
+        prefs.edit()
+            .putString(KEY_HISTORY, updated)
+            .apply()
+    }
+
     private fun checkConnection() {
 
         statusText.text =
-            "\nConnection\nChecking..."
+            "\n🔄 Connection\nChecking..."
 
         thread {
 
@@ -222,12 +480,12 @@ class MainActivity : AppCompatActivity() {
                     if (code in 200..299) {
 
                         statusText.text =
-                            "\nConnection\n🟢 ONLINE"
+                            "\n🟢 Connection\nONLINE"
 
                     } else {
 
                         statusText.text =
-                            "\nConnection\n🔴 SERVER $code"
+                            "\n🔴 Connection\nSERVER $code"
                     }
                 }
 
@@ -236,15 +494,26 @@ class MainActivity : AppCompatActivity() {
                 runOnUiThread {
 
                     statusText.text =
-                        "\nConnection\n🔴 OFFLINE"
-
-                    Toast.makeText(
-                        this,
-                        "Connection error",
-                        Toast.LENGTH_SHORT
-                    ).show()
+                        "\n🔴 Connection\nOFFLINE"
                 }
             }
         }
+    }
+
+    private fun AlertDialogBuilder(
+        title: String,
+        view: EditText,
+        button: String,
+        action: () -> Unit
+    ) {
+
+        android.app.AlertDialog.Builder(this)
+            .setTitle(title)
+            .setView(view)
+            .setPositiveButton(button) { _, _ ->
+                action()
+            }
+            .setNegativeButton("CANCEL", null)
+            .show()
     }
 }
